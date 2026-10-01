@@ -759,6 +759,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_dl.set_defaults(func=cmd_download)
 
+    # serve (local web UI)
+    p_serve = sub.add_parser("serve", help="Start the local web UI")
+    p_serve.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8321, help="port (default: 8321)")
+    p_serve.add_argument("--open", action="store_true", help="open the browser automatically")
+    p_serve.set_defaults(func=cmd_serve)
+
     # search gets --pick (downloads straight from results)
     p_search.add_argument(
         "--pick", action="store_true",
@@ -774,6 +781,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.set_defaults(func=cmd_search)
 
     return parser
+
+
+def cmd_serve(args) -> None:
+    from .web import serve
+
+    serve(host=args.host, port=args.port, open_browser=args.open)
 
 
 def main(argv: list[str] | None = None) -> None:
