@@ -11,8 +11,9 @@ CLI de manga downloader com **extensões Aidoku (WebAssembly)** — leve, em Pyt
 
 - **~80 MB de RAM** no total (o caminho Suwayomi/JVM usa ~2.6 GB)
 - Sem JVM, sem Android, sem CEF/Chromium — só Python + wasmtime
-- **138 sources** disponíveis no índice da comunidade Aidoku (Asura, Aqua, etc.)
-- Download em `raw`, `epub`, `cbz` e `pdf`
+- **143+ sources**: índice oficial Aidoku + repositórios de terceiros (Yomu, etc.)
+- Download em `raw`, `epub`, `cbz`, `cb7` e `pdf`
+- Filtro de **idioma** por comando (`--language`)
 - Suporte **opcional** ao Suwayomi-Server (extensões Mihon/keiyoushi) via `--engine suwayomi`
 
 > Inspirado no [rakuyomi](https://github.com/tachibana-shin/rakuyomi) (reader para KOReader
@@ -32,15 +33,26 @@ Dependências: `wasmtime`, `beautifulsoup4`, `requests`, `rich`, `Pillow`.
 
 ```bash
 # Sources (extensões Aidoku)
-wotoha sources list                    # instalados + disponíveis (138)
-wotoha sources search asura            # buscar no índice
-wotoha sources install en.asurascans
+wotoha sources list                    # instalados + disponíveis (agrega todos os repos)
+wotoha sources search asura            # buscar em todos os índices
+wotoha sources install en.asurascans   # procura o source em todos os repos
 wotoha sources uninstall en.asurascans
+
+# Repositórios de terceiros
+wotoha sources repo list               # repos cadastrados (aidoku vem de fábrica)
+wotoha sources repo add yomu https://smexhy.github.io/yomu-aidoku-sources/index.min.json
+wotoha sources install --index yomu en.atsumaru    # ou só 'install en.atsumaru'
+wotoha sources install --index https://.../index.min.json multi.kagane  # URL direta
 
 # Descoberta
 wotoha search "solo leveling" --source en.asurascans
 wotoha search "berserk"                # busca em todos os sources instalados
-wotoha info en.asurascans::solo-leveling
+wotoha info en.asurascans::solo-leveling   # link, tags, idiomas, data do último cap
+
+# Idioma (sources multi-idioma: MangaDex, MangaPlus, Mangafire...)
+wotoha search "onimai" -l pt-BR
+wotoha info multi.mangadex::<uuid> -l pt-BR        # capítulos traduzidos
+wotoha download multi.mangadex::<uuid> -l pt-BR -c 1-10
 
 # Download
 wotoha download en.asurascans::solo-leveling -f epub              # tudo
@@ -66,6 +78,25 @@ wotoha download ID --delay-requests 2.5   # rate limit (1 req a cada 2.5s)
 ```
 
 Os IDs de mangá são compostos (`sourceId::key`) e vêm no resultado da busca.
+
+## Repositórios de sources
+
+Além do índice oficial da comunidade Aidoku, o wotoha aceita qualquer repo
+que publique um `index.min.json` no mesmo formato (ex.:
+[yomu-aidoku-sources](https://github.com/Smexhy/yomu-aidoku-sources)).
+
+```bash
+wotoha sources repo add <nome> <url-do-index.min.json>
+wotoha sources repo list                 # aidoku (built-in) + os que você adicionar
+wotoha sources repo remove <nome>
+```
+
+- `list`/`search` agregam **todos** os repos e mostram a coluna **Repo**
+  (`aidoku+yomu` quando o source existe em mais de um)
+- `install` procura o source em todos os repos; `--index <nome|url>` força um
+- A proveniência fica em `~/.wotoha/repos.json` (repos) e
+  `~/.wotoha/source_repos.json` (origem de cada source instalado)
+- Sources do SDK 0.8 são suportados (Atsumaru, WEBTOON, Mangaball, Kagane...)
 
 ## Formatos
 
@@ -119,13 +150,15 @@ wotoha download <id> --engine suwayomi -f epub
 
 ## Roadmap
 
-- [x] Runtime Aidoku WASM (next-SDK 0.7)
+- [x] Runtime Aidoku WASM (next-SDK 0.7 **e 0.8**)
 - [x] CLI completo (sources/search/info/download/convert)
 - [x] ComicInfo.xml, cb7, modos chapter/volume/single, faixa de páginas
 - [x] Proxy, rate limit, batch, --pick interativo, --cover, --no-oneshot
+- [x] Repos de terceiros (`sources repo`, `--index`, auto-discovery no install)
+- [x] Filtro de idioma (`--language` em search/info/download) e info enriquecido
 - [ ] Runtime JS — LNReader/Mangayomi via quickjs
 - [ ] Filtros avançados de busca (`filters.json`)
-- [ ] Settings de source (`defaults.get/set` na UI)
+- [ ] Comparação de resultados entre sources (mesmo título em vários sources)
 
 ## Notas legais
 
