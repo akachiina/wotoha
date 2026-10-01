@@ -549,17 +549,29 @@ class AidokuRuntime:
         req = self._requests[handle]
         if not req["url"]:
             raise AidokuSourceError("request has no url")
-        try:
-            resp = request_with_limit(
-                self._http,
-                req["method"],
-                req["url"],
-                headers=req["headers"],
-                data=req["body"],
-                timeout=req["timeout"] or None,
-            )
-        except Exception as e:  # noqa: BLE001
-            raise AidokuSourceError(f"request failed: {e}") from e
+        # transient transport errors (connection reset, remote disconnect,
+        # timeout) are retried a couple of times before failing the request
+        resp = None
+        last_err: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                resp = request_with_limit(
+                    self._http,
+                    req["method"],
+                    req["url"],
+                    headers=req["headers"],
+                    data=req["body"],
+                    timeout=req["timeout"] or None,
+                )
+                break
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                if attempt < 3:
+                    time.sleep(min(2**attempt, 4))
+            except Exception as e:  # noqa: BLE001
+                raise AidokuSourceError(f"request failed: {e}") from e
+        if resp is None:
+            raise AidokuSourceError(f"request failed: {last_err}") from last_err
         body = resp.content
         body = self._normalize_mangaplus_directory(req["url"], body)
         req["response"] = {
@@ -573,7 +585,7 @@ class AidokuRuntime:
 
     @staticmethod
     def _pb_split(buf: bytes) -> list[tuple[int, int, bytes]]:
-        """Divide uma mensagem protobuf em (tag, wire, payload) preservando ordem."""
+        """Splits a protobuf message into (tag, wire, payload) preserving order."""
         out: list[tuple[int, int, bytes]] = []
         i, n = 0, len(buf)
         while i < n:

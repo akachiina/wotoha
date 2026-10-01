@@ -540,8 +540,10 @@ def _download_aidoku(args) -> None:
                         workdir.mkdir(parents=True, exist_ok=True)
                     try:
                         dl.download_chapter(composite_id, chapter, workdir, pages_spec=args.pages)
-                    except (MangaDlError, ValueError, requests.exceptions.RequestException) as e:
-                        err_console.print(f"[red]✗ {chapter.name}:[/red] {e}")
+                    except Exception as e:  # noqa: BLE001 - one bad chapter shouldn't kill the run
+                        label = "" if isinstance(e, MangaDlError) else f"{type(e).__name__}: "
+                        err_console.print(f"[red]✗ {chapter.name}:[/red] {label}{e}")
+                        shutil.rmtree(workdir, ignore_errors=True)
                         progress.advance(task)
                         continue
                     if mode == "volume":
@@ -625,11 +627,18 @@ def _download_suwayomi(args) -> None:
             workdir = base_tmp / safe_name(f"{manga_id}-{chapter.index}")
             if needs_files:
                 workdir.mkdir(parents=True, exist_ok=True)
-            dl.download_chapter(manga, chapter, workdir, pages_spec=args.pages)
-            if mode == "volume":
-                fmt.save_volume(manga_meta, chapter, workdir)
-            else:
-                fmt.save_chapter(manga_meta, chapter, workdir)
+            try:
+                dl.download_chapter(manga, chapter, workdir, pages_spec=args.pages)
+                if mode == "volume":
+                    fmt.save_volume(manga_meta, chapter, workdir)
+                else:
+                    fmt.save_chapter(manga_meta, chapter, workdir)
+            except Exception as e:  # noqa: BLE001 - one bad chapter shouldn't kill the run
+                label = "" if isinstance(e, MangaDlError) else f"{type(e).__name__}: "
+                err_console.print(f"[red]✗ {chapter.name}:[/red] {label}{e}")
+                shutil.rmtree(workdir, ignore_errors=True)
+                progress.advance(task)
+                continue
             if needs_files:
                 shutil.rmtree(workdir, ignore_errors=True)
             progress.advance(task)
@@ -845,6 +854,11 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
     except FileNotFoundError as e:
         err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:  # noqa: BLE001 - never traceback at users
+        if args.verbose:
+            raise
+        err_console.print(f"[red]Error:[/red] {type(e).__name__}: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
         err_console.print("\n[yellow]Interrupted.[/yellow]")

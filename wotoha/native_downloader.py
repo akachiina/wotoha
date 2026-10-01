@@ -7,7 +7,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,9 @@ class NativeChapter:
     title: str | None = None
     date_uploaded: int | None = None
     scanlators: list[str] | None = None
+    # keys of other releases (scanlation groups) of the same chapter, tried
+    # in order when the primary release can't be downloaded completely
+    fallbacks: list[str] = field(default_factory=list)
 
     @property
     def id(self) -> int:  # compat with the output formats
@@ -61,17 +64,27 @@ class NativeDownloader:
     # listing / selection
 
     def list_chapters(self, composite_id: str, no_oneshot: bool = False) -> list[NativeChapter]:
+        """Lists chapters, deduplicating multiple releases of the same chapter
+        (multi-group sources like MangaDex return one entry per group). The
+        first release is primary; the others become fallbacks that
+        download_chapter tries when the primary one is incomplete."""
         details = self.catalog.manga_details(composite_id)
         chapters = details.get("chapters") or []
-        result = []
+        result: list[NativeChapter] = []
+        seen: dict[tuple, NativeChapter] = {}
         for i, c in enumerate(chapters):
             title = c.get("title")
             num = c.get("chapterNumber")
             name = f"Chapter {num:g}" if num is not None else (title or f"Chapter {i + 1}")
             if title and num is not None and title != name:
                 name = f"{name} - {title}"
+            group = ("num", float(num)) if num is not None else ("title", title or f"Chapter {i + 1}")
+            primary = seen.get(group)
+            if primary is not None:
+                primary.fallbacks.append(c["key"])
+                continue
             ch = NativeChapter(
-                index=i,
+                index=len(result),
                 key=c["key"],
                 name=name,
                 chapter_number=num,
@@ -83,6 +96,7 @@ class NativeDownloader:
             )
             if no_oneshot and ch.is_oneshot:
                 continue
+            seen[group] = ch
             result.append(ch)
         return result
 
@@ -168,16 +182,54 @@ class NativeDownloader:
         dest: Path,
         pages_spec: str | None = None,
     ) -> Path:
+        """Downloads a chapter completely, trying every available release of
+        it (scanlation groups) until one provides all pages."""
         dest.mkdir(parents=True, exist_ok=True)
         marker = dest / ".complete"
         if marker.is_file():
             log.info("chapter already downloaded, skipping: %s", dest.name)
             return dest
 
+        releases = [chapter.key, *chapter.fallbacks]
+        last_err: Exception | None = None
+        for n, key in enumerate(releases):
+            try:
+                count = self._download_release(
+                    composite_id, key, chapter, dest, pages_spec
+                )
+            except Exception as e:  # noqa: BLE001 - try the next release
+                last_err = e
+                # drop partial files so the next release starts clean
+                for f in dest.iterdir():
+                    if f.is_file() and f.name != ".complete":
+                        f.unlink()
+                if n + 1 < len(releases):
+                    log.warning(
+                        "release %s of '%s' failed (%s) — trying another release",
+                        key[:8], chapter.name, e,
+                    )
+                continue
+            marker.write_text(str(count))
+            return dest
+        raise MangaDlError(f"'{chapter.name}': {last_err}") from last_err
+
+    def _download_release(
+        self,
+        composite_id: str,
+        release_key: str,
+        chapter: NativeChapter,
+        dest: Path,
+        pages_spec: str | None,
+    ) -> int:
+        """Downloads one release (chapter entry) fully; raises on any missing
+        page. Returns the number of pages written."""
         source_id, _ = composite_id.split("::", 1)
-        pages = self.catalog.chapter_pages(composite_id, chapter.key)
+        pages = self.catalog.chapter_pages(composite_id, release_key)
         indices = parse_page_range(pages_spec, len(pages))
-        log.info("downloading '%s' (%d pages)", chapter.name, len(indices))
+        log.info(
+            "downloading '%s' (%d pages, release %s)",
+            chapter.name, len(indices), release_key[:8],
+        )
 
         def fetch(i: int) -> tuple[int, bytes]:
             last_err: Exception | None = None
@@ -237,19 +289,16 @@ class NativeDownloader:
                     f.cancel()
                 raise
 
-        if failed_pages and len(failed_pages) == len(indices):
-            # nothing was saved: the chapter as a whole failed
-            raise MangaDlError(
-                f"all {len(indices)} page(s) of '{chapter.name}' failed"
-            )
         if failed_pages:
-            log.warning(
-                "chapter '%s' saved with missing pages: %s",
-                chapter.name, ", ".join(failed_pages),
+            # never save a chapter with missing pages: reading a manga with
+            # holes is worse than failing the release outright. The caller
+            # cleans up and tries the next release of the same chapter.
+            raise MangaDlError(
+                f"{len(failed_pages)}/{len(indices)} page(s) unavailable "
+                f"({', '.join(failed_pages)})"
             )
 
-        marker.write_text(str(len(indices)))
-        return dest
+        return len(indices)
 
     def download_cover(self, composite_id: str, dest_dir: Path) -> Path | None:
         """Downloads the manga cover to dest_dir (returns None if absent)."""
