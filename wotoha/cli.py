@@ -142,13 +142,14 @@ def cmd_sources(args) -> None:
         console.print(table)
         return
 
-    from .aidoku_store import fetch_index, list_installed, search_index, sources_dir
+    from .aidoku_store import DEFAULT_INDEX_URL, fetch_index, list_installed, search_index, sources_dir
 
     action = args.source_action or "list"
+    index_url = getattr(args, "index", None) or DEFAULT_INDEX_URL
     if action == "list":
         installed = {s["id"] for s in list_installed()}
         try:
-            available = fetch_index()
+            available = fetch_index(index_url)
         except Exception as e:  # noqa: BLE001
             err_console.print(f"[yellow]Índice indisponível ({e}); mostrando só instalados.[/yellow]")
             available = []
@@ -171,7 +172,7 @@ def cmd_sources(args) -> None:
                 _row(s, False)
         console.print(table)
     elif action == "search":
-        results = search_index(args.term)
+        results = search_index(args.term, index_url)
         table = Table(title=f"Aidoku: '{args.term}' ({len(results)})")
         table.add_column("ID", style="cyan", no_wrap=True)
         table.add_column("Nome", style="white")
@@ -184,7 +185,7 @@ def cmd_sources(args) -> None:
 
         for sid in args.source_id:
             try:
-                install(sid)
+                install(sid, index_url=index_url)
                 console.print(f"[green]OK:[/green] {sid}")
             except KeyError:
                 err_console.print(f"[red]'{sid}' não está no índice.[/red] Use: wotoha sources search <termo>")
@@ -542,14 +543,26 @@ def build_parser() -> argparse.ArgumentParser:
     # sources
     p_src = sub.add_parser("sources", help="Gerencia sources Aidoku")
     src_sub = p_src.add_subparsers(dest="source_action")
-    src_sub.add_parser("list", help="Lista instalados + disponíveis")
-    p_ss = src_sub.add_parser("search", help="Busca no índice")
+    # índice alternativo (repos de terceiros), aceito em list/search/install/uninstall
+    # e no próprio 'sources' (SUPPRESS no subcomando pra não sobrescrever o do pai)
+    _index_parent = argparse.ArgumentParser(add_help=False)
+    _index_parent.add_argument(
+        "--index", default=argparse.SUPPRESS, metavar="URL",
+        help="índice alternativo de sources Aidoku (ex.: repos de terceiros como "
+             "https://smexhy.github.io/yomu-aidoku-sources/index.min.json)",
+    )
+    src_sub.add_parser("list", help="Lista instalados + disponíveis", parents=[_index_parent])
+    p_ss = src_sub.add_parser("search", help="Busca no índice", parents=[_index_parent])
     p_ss.add_argument("term")
-    p_si = src_sub.add_parser("install", help="Instala source(s)")
+    p_si = src_sub.add_parser("install", help="Instala source(s)", parents=[_index_parent])
     p_si.add_argument("source_id", nargs="+")
-    p_su = src_sub.add_parser("uninstall", help="Remove source(s)")
+    p_su = src_sub.add_parser("uninstall", help="Remove source(s)", parents=[_index_parent])
     p_su.add_argument("source_id", nargs="+")
     src_sub.add_parser("dir", help="Mostra a pasta de sources")
+    p_src.add_argument(
+        "--index", default=None, metavar="URL",
+        help="índice alternativo de sources Aidoku (repos de terceiros)",
+    )
     p_src.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_src.set_defaults(func=cmd_sources)
 

@@ -180,6 +180,17 @@ class AidokuRuntime:
         self._free_result(ptr)
         return payload
 
+    def _read_result_nofree(self, ptr: int) -> bytes:
+        """Lê um buffer [len][cap][bytes] sem liberá-lo (para buffers passados
+        como argumento pelo source, cuja propriedade é do próprio source)."""
+        header = self._mem_read(ptr, 12)
+        tag = int.from_bytes(header[0:4], "little", signed=True)
+        length = int.from_bytes(header[4:8], "little", signed=True)
+        if tag == -1:
+            msg = self._mem_read(ptr + 12, length).decode("utf-8", "replace")
+            raise AidokuSourceError(f"source error: {msg}")
+        return self._mem_read(ptr + 8, length)
+
     def _free_result(self, ptr: int) -> None:
         try:
             free_fn = self.exports.get("free_result")
@@ -314,7 +325,7 @@ class AidokuRuntime:
         add("net", "html", [i32], [i32], self._h_net_html)
         add("net", "get_image", [i32], [i32], self._h_net_get_image)
         add("net", "set_rate_limit", [i32, i32, i32], [], self._h_net_set_rate_limit)
-        add("net", "set_timeout", [i32, f64], [], self._h_net_set_timeout)
+        add("net", "set_timeout", [i32, f64], [i32], self._h_net_set_timeout)
 
         # html ----------------------------------------------------------- #
         add("html", "parse", [i32] * 4, [i32], self._h_html_parse)
@@ -678,8 +689,9 @@ class AidokuRuntime:
         mult = {0: 1, 1: 60, 2: 3600}.get(unit, 1)
         log.debug("source rate limit: %d per %ds (global vence)", permits, period * mult)
 
-    def _h_net_set_timeout(self, handle: int, value: float) -> None:
+    def _h_net_set_timeout(self, handle: int, value: float) -> int:
         self._requests[handle]["timeout"] = value
+        return 0
 
     # -- html handlers ------------------------------------------------- #
 
@@ -1122,7 +1134,9 @@ class AidokuRuntime:
     def _h_defaults_set(self, kptr: int, klen: int, kind: int, vptr: int) -> int:
         key = self._mem_read(kptr, klen).decode()
         try:
-            payload = self._read_result_raw(vptr) if vptr > 0 else b""
+            # vptr é um buffer PASSADO PELO SOURCE (argumento): o host só lê;
+            # liberar aqui causava double-free/trap de memória em sources 0.8
+            payload = self._read_result_nofree(vptr) if vptr > 0 else b""
             d = Decoder(payload)
             reader = {
                 1: Decoder.boolean,
