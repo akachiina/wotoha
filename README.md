@@ -1,9 +1,6 @@
-# wotoha 🪼
+# wotoha
 
-Manga downloader CLI **with a local web UI** and **Aidoku (WebAssembly) extensions** — lightweight, pure Python, **no Java**.
-
-Named after [Wotoha (をとは)](https://x.com/mitukineu), the illustrator/singer behind OFUTONE —
-the UI is as cozy as her "jelly girl" world: futon pastels, soft clouds and a little jellyfish.
+Manga downloader CLI with **Aidoku (WebAssembly) extensions** — lightweight, pure Python, **no Java**.
 
 ```
 ┌──────────┐  runs     ┌────────────────────┐  scrapes  ┌──────────────┐
@@ -78,24 +75,7 @@ wotoha download --batch-from-file list.txt -f cbz
 # Network
 wotoha download ID --proxy socks5://localhost:9050
 wotoha download ID --delay-requests 2.5   # rate limit (1 request every 2.5s)
-
-# Web UI (search, read online, download queue)
-wotoha serve                 # http://127.0.0.1:8321
-wotoha serve --port 8080 --open
 ```
-
-## Web UI
-
-`wotoha serve` starts a local web app (stdlib HTTP server, no extra deps):
-
-- **Search** across all installed sources, with covers and language filter
-- **Manga details**: cover, synopsis, tags, chapter list per language
-- **Reader**: read chapters in the browser (pages proxied/cached by the host,
-  hotlink protection handled per source)
-- **Downloads**: queue with live progress, format/mode picker (CBZ/EPUB/PDF/RAW,
-  per chapter/volume/single), cancel support — saves to the same `downloads/`
-  folder as the CLI
-- Light/dark themes (cozy pastel day, sleepy indigo night)
 
 Manga IDs are composite (`sourceId::key`) and come from search results.
 
