@@ -212,3 +212,43 @@ def resolve_index(value: str | None) -> str:
         f"repo '{value}' não cadastrado. Use: wotoha sources repo add {value} <url> "
         f"(cadastrados: {known})"
     )
+
+
+def fetch_index_safe(index_url: str) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """fetch_index que não levanta: retorna (sources, erro)."""
+    try:
+        return fetch_index(index_url), None
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)
+
+
+def aggregate_indexes() -> tuple[dict[str, list[tuple[str, dict[str, Any]]]], list[str]]:
+    """Agrega todos os repos cadastrados.
+
+    Retorna ({source_id: [(repo_nome, entry), ...]}, [repos indisponíveis]).
+    """
+    out: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    unreachable: list[str] = []
+    for name, url in list_repos().items():
+        sources, err = fetch_index_safe(url)
+        if sources is None:
+            log.warning("índice do repo '%s' indisponível: %s", name, err)
+            unreachable.append(name)
+            continue
+        for s in sources:
+            sid = s.get("id")
+            if sid:
+                out.setdefault(sid, []).append((name, s))
+    return out, unreachable
+
+
+def find_source(source_id: str) -> tuple[str, str] | None:
+    """Procura o source em todos os repos; retorna (repo_nome, index_url)."""
+    for name, url in list_repos().items():
+        sources, err = fetch_index_safe(url)
+        if sources is None:
+            log.warning("índice do repo '%s' indisponível: %s", name, err)
+            continue
+        if any(s.get("id") == source_id for s in sources):
+            return name, url
+    return None

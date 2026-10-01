@@ -149,12 +149,13 @@ def cmd_sources(args) -> None:
     from .aidoku_store import (
         DEFAULT_INDEX_URL,
         add_repo,
-        fetch_index,
+        aggregate_indexes,
+        fetch_index_safe,
+        find_source,
         list_installed,
         list_repos,
         remove_repo,
         resolve_index,
-        search_index,
         sources_dir,
     )
 
@@ -167,45 +168,85 @@ def cmd_sources(args) -> None:
         err_console.print(f"[red]{e.args[0]}[/red]")
         sys.exit(1)
     if action == "list":
-        installed = {s["id"] for s in list_installed()}
-        try:
-            available = fetch_index(index_url)
-        except Exception as e:  # noqa: BLE001
-            err_console.print(f"[yellow]Índice indisponível ({e}); mostrando só instalados.[/yellow]")
-            available = []
-        table = Table(title=f"Sources Aidoku — {len(installed)} instalados, {len(available)} disponíveis")
+        installed_entries = list_installed()
+        installed = {s["id"] for s in installed_entries}
+        if getattr(args, "index", None):
+            # com --index explícito: mostra só aquele índice
+            entries = fetch_index_safe(index_url)[0] or []
+            repo_name = args.index
+            available: dict[str, tuple[str, dict]] = {s["id"]: (repo_name, s) for s in entries}
+        else:
+            available, unreachable = aggregate_indexes()
+            for r in unreachable:
+                err_console.print(f"[yellow]⚠ repo '{r}' indisponível.[/yellow]")
+        all_ids = sorted(set(installed) | set(available))
+        table = Table(title=f"Sources Aidoku — {len(installed)} instalados, {len(all_ids)} disponíveis")
         table.add_column("ID", style="cyan", no_wrap=True)
         table.add_column("Nome", style="white", overflow="fold")
-        table.add_column("Lang", style="green")
+        table.add_column("Lang", style="green", overflow="fold")
+        table.add_column("Repo", style="yellow")
         table.add_column("Instalado", style="magenta")
-        def _row(s, installed_flag):
+
+        def _lang_of(sid: str) -> str:
+            if sid in available:
+                return ",".join(available[sid][0][1].get("languages") or []) or "?"
+            entry = next((e for e in installed_entries if e["id"] == sid), None)
+            return ",".join((entry or {}).get("languages") or []) or "?"
+
+        for sid in all_ids:
+            repos_of = available.get(sid)
+            repo_label = "+".join(r for r, _ in repos_of) if repos_of else "?"
             table.add_row(
-                s.get("id", "?"),
-                s.get("name", "?"),
-                ",".join(s.get("languages") or []) or "?",
-                "sim" if installed_flag else "",
+                sid,
+                (repos_of[0][1].get("name") if repos_of else next((e["name"] for e in installed_entries if e["id"] == sid), "?")),
+                _lang_of(sid),
+                repo_label,
+                "sim" if sid in installed else "",
             )
-        for s in list_installed():
-            _row(s, True)
-        for s in available:
-            if s.get("id") not in installed:
-                _row(s, False)
         console.print(table)
     elif action == "search":
-        results = search_index(args.term, index_url)
+        term = args.term.lower()
+        if getattr(args, "index", None):
+            entries = fetch_index_safe(index_url)[0] or []
+            repo_by_id = {s.get("id"): args.index for s in entries}
+            catalog_by_id = {s.get("id", ""): s for s in entries}
+        else:
+            agg, unreachable = aggregate_indexes()
+            for r in unreachable:
+                err_console.print(f"[yellow]⚠ repo '{r}' indisponível.[/yellow]")
+            repo_by_id = {sid: "+".join(r for r, _ in v) for sid, v in agg.items()}
+            catalog_by_id = {sid: v[0][1] for sid, v in agg.items()}
+        results = [
+            (sid, catalog_by_id[sid])
+            for sid in sorted(catalog_by_id)
+            if term in catalog_by_id[sid].get("name", "").lower() or term in sid.lower()
+        ]
         table = Table(title=f"Aidoku: '{args.term}' ({len(results)})")
         table.add_column("ID", style="cyan", no_wrap=True)
         table.add_column("Nome", style="white")
-        table.add_column("Lang", style="green")
-        for s in results:
-            table.add_row(s["id"], s.get("name", "?"), ",".join(s.get("languages") or []))
+        table.add_column("Lang", style="green", overflow="fold")
+        table.add_column("Repo", style="yellow")
+        for sid, entry in results:
+            table.add_row(
+                sid,
+                entry.get("name", "?"),
+                ",".join(entry.get("languages") or []),
+                repo_by_id.get(sid, "?"),
+            )
         console.print(table)
     elif action == "install":
-        from .aidoku_store import install
+        from .aidoku_store import find_source, install
 
         for sid in args.source_id:
             try:
-                install(sid, index_url=index_url)
+                if getattr(args, "index", None):
+                    install(sid, index_url=index_url)
+                else:
+                    found = find_source(sid)
+                    if not found:
+                        err_console.print(f"[red]'{sid}' não encontrado em nenhum repo.[/red] Use: wotoha sources search <termo>")
+                        sys.exit(1)
+                    install(sid, index_url=found[1])
                 console.print(f"[green]OK:[/green] {sid}")
             except KeyError:
                 err_console.print(f"[red]'{sid}' não está no índice.[/red] Use: wotoha sources search <termo>")
