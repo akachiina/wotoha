@@ -142,10 +142,26 @@ def cmd_sources(args) -> None:
         console.print(table)
         return
 
-    from .aidoku_store import DEFAULT_INDEX_URL, fetch_index, list_installed, search_index, sources_dir
+    from .aidoku_store import (
+        DEFAULT_INDEX_URL,
+        add_repo,
+        fetch_index,
+        list_installed,
+        list_repos,
+        remove_repo,
+        resolve_index,
+        search_index,
+        sources_dir,
+    )
 
     action = args.source_action or "list"
-    index_url = getattr(args, "index", None) or DEFAULT_INDEX_URL
+    index_url = DEFAULT_INDEX_URL
+    try:
+        if action != "repo" and getattr(args, "index", None):
+            index_url = resolve_index(args.index)
+    except KeyError as e:
+        err_console.print(f"[red]{e.args[0]}[/red]")
+        sys.exit(1)
     if action == "list":
         installed = {s["id"] for s in list_installed()}
         try:
@@ -198,6 +214,25 @@ def cmd_sources(args) -> None:
                 console.print(f"[green]removido:[/green] {sid}")
             else:
                 console.print(f"[yellow]não instalado:[/yellow] {sid}")
+    elif action == "repo":
+        repo_action = getattr(args, "repo_action", None) or "list"
+        if repo_action == "list":
+            repos = list_repos()
+            table = Table(title=f"Repositórios de sources ({len(repos)})")
+            table.add_column("Nome", style="cyan", no_wrap=True)
+            table.add_column("URL", style="white", overflow="fold")
+            for name, url in repos.items():
+                table.add_row(name, url)
+            console.print(table)
+            console.print("[dim]Uso: wotoha sources install --index <nome|url> <source_id>[/dim]")
+        elif repo_action == "add":
+            add_repo(args.name, args.url)
+            console.print(f"[green]OK:[/green] repo '{args.name}' -> {args.url}")
+        elif repo_action == "remove":
+            if remove_repo(args.name):
+                console.print(f"[green]removido:[/green] {args.name}")
+            else:
+                err_console.print(f"[yellow]'{args.name}' não cadastrado.[/yellow]")
     elif action == "dir":
         console.print(sources_dir())
 
@@ -559,6 +594,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_su = src_sub.add_parser("uninstall", help="Remove source(s)", parents=[_index_parent])
     p_su.add_argument("source_id", nargs="+")
     src_sub.add_parser("dir", help="Mostra a pasta de sources")
+    p_repo = src_sub.add_parser("repo", help="Gerencia repositórios de sources")
+    repo_sub = p_repo.add_subparsers(dest="repo_action")
+    repo_sub.add_parser("list", help="Lista repositórios cadastrados")
+    p_ra = repo_sub.add_parser("add", help="Cadastra um repositório")
+    p_ra.add_argument("name", help="nome curto (ex.: yomu)")
+    p_ra.add_argument("url", help="URL do index.min.json")
+    p_rr = repo_sub.add_parser("remove", help="Remove um repositório")
+    p_rr.add_argument("name")
     p_src.add_argument(
         "--index", default=None, metavar="URL",
         help="índice alternativo de sources Aidoku (repos de terceiros)",

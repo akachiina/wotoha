@@ -311,6 +311,8 @@ class AidokuRuntime:
         add("env", "print", [i32, i32], [], self._h_std_print)
         # abort do Rust compilado p/ wasm (panic path em sources 0.8, ex. webtoon)
         add("env", "abort", [], [], self._h_std_abort)
+        # pausa anti-rate-limit pedida pelo source (limitada pra não travar o CLI)
+        add("env", "sleep", [i32], [], self._h_env_sleep)
 
         # net ------------------------------------------------------------ #
         add("net", "init", [i32], [i32], self._h_net_init)
@@ -424,6 +426,13 @@ class AidokuRuntime:
 
     def _h_std_abort(self) -> None:
         raise AidokuSourceError("source aborted (std.abort)")
+
+    def _h_env_sleep(self, seconds: int) -> None:
+        cap = min(max(0, seconds), 10)
+        if cap < seconds:
+            log.debug("env.sleep(%ds) limitado a %ds", seconds, cap)
+        if cap > 0:
+            time.sleep(cap)
 
     def _h_std_current_date(self) -> float:
         return time.time()

@@ -95,3 +95,70 @@ def search_index(term: str, index_url: str = DEFAULT_INDEX_URL) -> list[dict[str
         for s in fetch_index(index_url)
         if term in s.get("name", "").lower() or term in s.get("id", "").lower()
     ]
+
+
+# --------------------------------------------------------------------------- #
+# repositórios nomeados (~/.wotoha/repos.json)
+# --------------------------------------------------------------------------- #
+
+BUILTIN_REPOS = {"aidoku": DEFAULT_INDEX_URL}
+
+
+def _repos_file() -> Path:
+    d = Path(config.sources_dir).expanduser().parent
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "repos.json"
+
+
+def list_repos() -> dict[str, str]:
+    repos = dict(BUILTIN_REPOS)
+    f = _repos_file()
+    if f.is_file():
+        try:
+            repos.update(json.loads(f.read_text()))
+        except Exception as e:  # noqa: BLE001
+            log.warning("repos.json inválido: %s", e)
+    return repos
+
+
+def add_repo(name: str, url: str) -> None:
+    f = _repos_file()
+    current: dict[str, str] = {}
+    if f.is_file():
+        try:
+            current = json.loads(f.read_text())
+        except Exception:  # noqa: BLE001
+            current = {}
+    current[name] = url
+    f.write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n")
+
+
+def remove_repo(name: str) -> bool:
+    f = _repos_file()
+    current: dict[str, str] = {}
+    if f.is_file():
+        try:
+            current = json.loads(f.read_text())
+        except Exception:  # noqa: BLE001
+            current = {}
+    if name not in current:
+        return False
+    del current[name]
+    f.write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n")
+    return True
+
+
+def resolve_index(value: str | None) -> str:
+    """Aceita URL explícita ou nome de repo cadastrado (ex.: 'yomu')."""
+    if not value:
+        return DEFAULT_INDEX_URL
+    if value.startswith("http"):
+        return value
+    repos = list_repos()
+    if value in repos:
+        return repos[value]
+    known = ", ".join(sorted(repos))
+    raise KeyError(
+        f"repo '{value}' não cadastrado. Use: wotoha sources repo add {value} <url> "
+        f"(cadastrados: {known})"
+    )
