@@ -1432,7 +1432,7 @@ class AidokuRuntime:
                 self._std_destroy(h_ctx)
 
         req = self._requests.pop(handle, None)
-        if req is None or not req.get("url"):
+        if req is None:
             return default
         headers = {k: v for k, v in (req.get("headers") or {}).items()}
         headers.setdefault("User-Agent", DEFAULT_USER_AGENT)
@@ -1440,9 +1440,26 @@ class AidokuRuntime:
         return method, req["url"], headers, req.get("body")
 
     def _extract_request_handle(self, ptr: int) -> int:
-        """get_image_request returns a Result<i32> buffer (the request handle)."""
+        """get_image_request returns Result<i32> as a postcard i32 (zigzag
+        varint), optionally wrapped in an Option — rakuyomi reads it with
+        read_next::<i32>. Bytes observed from mangafire: `02 01 11 00 ...`
+        = zigzag(1)=2, then the Some(...) payload bytes we must skip."""
         payload = self._read_result_raw(ptr)
-        return Decoder(payload).varint()
+        try:
+            handle = Decoder(payload).zigzag()
+        except Exception:  # noqa: BLE001
+            handle = 0
+        if handle == 0 and len(payload) > 1:
+            # Some(handle) layout: tag byte + payload starting with the handle
+            try:
+                handle = Decoder(payload[1:]).zigzag()
+            except Exception:  # noqa: BLE001
+                handle = 0
+        if handle <= 0:
+            raise AidokuSourceError(
+                f"get_image_request returned invalid handle: {handle!r} (payload {payload.hex()[:24]})"
+            )
+        return handle
 
     def _process_image(
         self,
