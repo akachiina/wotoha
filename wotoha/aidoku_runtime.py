@@ -181,8 +181,8 @@ class AidokuRuntime:
         return payload
 
     def _read_result_nofree(self, ptr: int) -> bytes:
-        """Lê um buffer [len][cap][bytes] sem liberá-lo (para buffers passados
-        como argumento pelo source, cuja propriedade é do próprio source)."""
+        """Reads a [len][cap][bytes] buffer without freeing it (for buffers
+        passed as arguments by the source, which own them)."""
         header = self._mem_read(ptr, 12)
         tag = int.from_bytes(header[0:4], "little", signed=True)
         length = int.from_bytes(header[4:8], "little", signed=True)
@@ -311,7 +311,7 @@ class AidokuRuntime:
         add("env", "print", [i32, i32], [], self._h_std_print)
         # abort do Rust compilado p/ wasm (panic path em sources 0.8, ex. webtoon)
         add("env", "abort", [], [], self._h_std_abort)
-        # pausa anti-rate-limit pedida pelo source (limitada pra não travar o CLI)
+        # anti-rate-limit pause requested by the source (capped so it can't hang the CLI)
         add("env", "sleep", [i32], [], self._h_env_sleep)
 
         # net ------------------------------------------------------------ #
@@ -342,7 +342,7 @@ class AidokuRuntime:
         add("html", "get", [i32, i32], [i32], self._h_html_get)
         add("html", "size", [i32], [i32], self._h_html_size)
 
-        # html: modificação
+        # html: mutation
         add("html", "set_text", [i32] * 3, [i32], self._h_html_set_text)
         add("html", "set_html", [i32] * 3, [i32], self._h_html_set_html)
         add("html", "prepend", [i32] * 3, [i32], self._h_html_prepend)
@@ -353,7 +353,7 @@ class AidokuRuntime:
         add("html", "add_class", [i32] * 3, [i32], self._h_html_add_class)
         add("html", "remove_class", [i32] * 3, [i32], self._h_html_remove_class)
 
-        # html: serialização/consulta
+        # html: serialization/query
         add("html", "html", [i32], [i32], self._h_html_html)
         add("html", "outer_html", [i32], [i32], self._h_html_outer_html)
         add("html", "untrimmed_text", [i32], [i32], self._h_html_text)
@@ -379,12 +379,12 @@ class AidokuRuntime:
         add("html", "kind", [i32], [i32], self._h_html_kind)
 
         # env ------------------------------------------------------------ #
-        # fonte envia resultado parcial (streaming p/ UI); no-op no CLI
+        # source sends a partial result (streaming for UI); no-op in the CLI
         add("env", "send_partial_result", [i32], [], lambda handle: None)
 
         # canvas --------------------------------------------------------- #
-        # superfície 2D p/ descramble de imagens (MangaPlus, MangaDex...).
-        # Implementado com Pillow; fill/stroke/draw_text são no-op seguros.
+        # 2D surface for image descrambling (MangaPlus, MangaDex...).
+        # Implemented with Pillow; fill/stroke/draw_text are safe no-ops.
         add("canvas", "new_context", [f32, f32], [i32], self._h_canvas_new_context)
         add("canvas", "set_transform", [i32, f32, f32, f32, f32, f32], [i32], self._h_canvas_set_transform)
         add("canvas", "draw_image", [i32, i32, f32, f32, f32, f32], [i32], self._h_canvas_draw_image)
@@ -524,7 +524,7 @@ class AidokuRuntime:
             "url": str(resp.url),
         }
 
-    # -- normalização protobuf (MangaPlus) ------------------------------ #
+    # -- protobuf normalization (MangaPlus) ------------------------------ #
 
     @staticmethod
     def _pb_split(buf: bytes) -> list[tuple[int, int, bytes]]:
@@ -598,11 +598,11 @@ class AidokuRuntime:
         return bytes(out)
 
     def _normalize_mangaplus_directory(self, url: str, body: bytes) -> bytes:
-        """A API title_list/all_v3 do MangaPlus passou a enviar múltiplas
-        variantes de idioma por entry, mas o source declara `title` singular;
-        o prost faz merge e a última variante com language definido vence,
-        sumindo com títulos populares no catálogo EN (One Piece etc.).
-        Normalização: mantém só a 1ª variante de cada entry."""
+        """The MangaPlus title_list/all_v3 API started sending multiple
+        language variants per entry, but the source declares `title` as
+        singular; prost merges them and the last variant with a defined
+        language wins, dropping popular titles from the EN catalog (One
+        Piece etc.). Normalization: keep only the 1st variant per entry."""
         try:
             if "jumpg-" not in url or "title_list/all_v3" not in url:
                 return body
@@ -623,7 +623,7 @@ class AidokuRuntime:
                             ef = self._pb_split(entry)
                             titles = [k for k, f in enumerate(ef) if f[0] == 2 and f[1] == 2]
                             if len(titles) > 1:
-                                # descarta variantes extras (mantém a 1ª)
+                                # drop extra variants (keep the 1st)
                                 keep = {titles[0]} | {
                                     k for k, f in enumerate(ef) if not (f[0] == 2 and f[1] == 2)
                                 }
@@ -641,7 +641,7 @@ class AidokuRuntime:
             if changed:
                 new_body = self._pb_join(top)
                 log.debug(
-                    "mangaplus: diretório normalizado (%d -> %d bytes)",
+                    "mangaplus: directory normalized (%d -> %d bytes)",
                     len(body), len(new_body),
                 )
                 return new_body
@@ -696,7 +696,7 @@ class AidokuRuntime:
         return -1  # not-an-image for now (sources embedding raw images are rare)
 
     def _h_net_set_rate_limit(self, permits: int, period: int, unit: int) -> None:
-        # fontes podem pedir um limite próprio; o global do usuário sempre vence
+        # sources may request their own limit; the user's global always wins
         mult = {0: 1, 1: 60, 2: 3600}.get(unit, 1)
         log.debug("source rate limit: %d per %ds (global vence)", permits, period * mult)
 
@@ -718,7 +718,7 @@ class AidokuRuntime:
         from bs4 import BeautifulSoup, UnicodeDammit
 
         # bs4 4.13 quebra com bytes misturados em warn_if_markup_looks_like_xml;
-        # decodificar sempre para str (detecção de encoding via UnicodeDammit)
+        # always decode to str (encoding detection via UnicodeDammit)
         if isinstance(html, (bytes, bytearray)):
             dammit = UnicodeDammit(html, ["utf-8", "windows-1252", "iso-8859-1"])
             html = dammit.unicode_markup or html.decode("utf-8", "replace")
@@ -830,7 +830,7 @@ class AidokuRuntime:
         node = self._el(handle)["node"]
         return len(node) if isinstance(node, list) else 1
 
-    # -- html: modificação ---------------------------------------------- #
+    # -- html: mutation ------------------------------------------------- #
 
     def _h_html_set_text(self, handle: int, ptr: int, length: int) -> int:
         node = self._el(handle)["node"]
@@ -928,7 +928,7 @@ class AidokuRuntime:
             first.attrs["class"] = [c for c in existing if c != name]
         return 0
 
-    # -- html: serialização/consulta ------------------------------------ #
+    # -- html: serialization/query -------------------------------------- #
 
     def _h_html_html(self, handle: int) -> int:
         """innerHTML do primeiro elemento."""
@@ -946,7 +946,7 @@ class AidokuRuntime:
         return self._store_value(str(n), str_encode=False)
 
     def _h_html_data(self, handle: int) -> int:
-        """Conteúdo de nós text/comment/data."""
+        """Content of text/comment/data nodes."""
         node = self._el(handle)["node"]
         n = node[0] if isinstance(node, list) and node else node
         if n is None:
@@ -1099,7 +1099,7 @@ class AidokuRuntime:
         return self._store_element(el["soup"], prevs, el["base"])
 
     def _h_html_kind(self, handle: int) -> int:
-        """NodeType: 1=element, 3=text, 5=data... (mantém compat com dom_query)."""
+        """NodeType: 1=element, 3=text, 5=data... (keeps dom_query compat)."""
         node = self._el(handle)["node"]
         n = node[0] if isinstance(node, list) and node else node
         if n is None:
@@ -1113,7 +1113,7 @@ class AidokuRuntime:
     def set_setting(self, key: str, value: Any) -> None:
         self._settings[key] = value
 
-    # códigos ISO 639-2 (config) -> 639-1 (formato que os sources Aidoku esperam)
+    # ISO 639-2 codes (config) -> 639-1 (what Aidoku sources expect)
     _LANG_MAP = {
         "eng": "en", "jpn": "ja", "por": "pt", "spa": "es", "fra": "fr",
         "fre": "fr", "rus": "ru", "chi": "zh", "zho": "zh", "kor": "ko",
@@ -1129,7 +1129,7 @@ class AidokuRuntime:
     def _h_defaults_get(self, kptr: int, klen: int) -> int:
         key = self._mem_read(kptr, klen).decode()
         # caso especial do rakuyomi: idiomas configurados no app
-        # (MangaPlus/MangaDex filtram o catálogo por isso)
+        # (MangaPlus/MangaDex filter the catalog by it)
         if key == "languages":
             from .config import config
 
@@ -1145,8 +1145,8 @@ class AidokuRuntime:
     def _h_defaults_set(self, kptr: int, klen: int, kind: int, vptr: int) -> int:
         key = self._mem_read(kptr, klen).decode()
         try:
-            # vptr é um buffer PASSADO PELO SOURCE (argumento): o host só lê;
-            # liberar aqui causava double-free/trap de memória em sources 0.8
+            # vptr is a buffer PASSED BY THE SOURCE (argument): the host only reads it;
+            # freeing here caused double-free/memory traps on 0.8 sources
             payload = self._read_result_nofree(vptr) if vptr > 0 else b""
             d = Decoder(payload)
             reader = {
@@ -1178,7 +1178,7 @@ class AidokuRuntime:
         canvas = self._canvases.get(ctx)
         if canvas:
             if rot:
-                log.debug("canvas: rotação não suportada (ignorada)")
+                log.debug("canvas: rotation not supported (ignored)")
             canvas["transform"] = (tx, ty, sx, sy)
         return 0
 
@@ -1204,7 +1204,7 @@ class AidokuRuntime:
         sx_: float, sy_: float, sw: float, sh: float,
         dx: float, dy: float, dw: float, dh: float,
     ) -> int:
-        """Recorte: copia o retângulo (sx,sy,sw,sh) da imagem para (dx,dy,dw,dh)."""
+        """Crop: copies the (sx,sy,sw,sh) rect of the image to (dx,dy,dw,dh)."""
         canvas = self._canvases.get(ctx)
         image = self._images.get(img)
         if not canvas or image is None:
@@ -1223,7 +1223,7 @@ class AidokuRuntime:
         return 0
 
     def _h_canvas_new_font(self, *args) -> int:
-        return 1  # handle fixo; draw_text é no-op
+        return 1  # fixed handle; draw_text is a no-op
 
     def _h_canvas_new_image(self, ptr: int, length: int) -> int:
         from io import BytesIO

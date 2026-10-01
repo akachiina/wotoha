@@ -1,4 +1,4 @@
-"""Utilitários de batch: seleção interativa e download de múltiplos mangás."""
+"""Batch utilities: interactive selection and multi-manga downloads."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 def parse_pick(spec: str, count: int) -> list[int]:
-    """Converte "1,3-5" em índices 0-based válidos."""
+    """Converts "1,3-5" into valid 0-based indexes."""
     chosen: set[int] = set()
     for part in spec.split(","):
         part = part.strip()
@@ -21,26 +21,26 @@ def parse_pick(spec: str, count: int) -> list[int]:
             a, _, b = part.partition("-")
             lo, hi = int(a), int(b)
             if lo < 1 or hi < lo:
-                raise ValueError(f"faixa inválida: '{part}'")
+                raise ValueError(f"invalid range: '{part}'")
             chosen.update(range(lo - 1, hi))
         else:
             chosen.add(int(part) - 1)
     result = sorted(i for i in chosen if 0 <= i < count)
     if not result:
-        raise ValueError(f"nenhum índice válido em '{spec}' (1-{count})")
+        raise ValueError(f"no valid index in '{spec}' (1-{count})")
     return result
 
 
 def pick_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Pede pro usuário escolher resultados de busca (estilo --input-pos)."""
+    """Asks the user to pick search results (--input-pos style)."""
     if not results:
         return []
-    print("\nResultados:")
+    print("\nResults:")
     for i, m in enumerate(results, start=1):
         status = m.get("status") or "?"
         print(f"  {i}. [{m.get('sourceId', '?')}] {m.get('title', '?')} ({status})")
     try:
-        spec = input("\nEscolha (ex.: 1,3-5; vazio cancela): ").strip()
+        spec = input("\nPick (e.g. 1,3-5; empty cancels): ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return []

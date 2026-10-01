@@ -1,4 +1,4 @@
-"""Download nativo de mangás de sources Aidoku (sem Suwayomi)."""
+"""Native manga downloads from Aidoku sources (no Suwayomi)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ ONESHOT_RE = re.compile(r"one[\s-]?shot", re.IGNORECASE)
 
 @dataclass
 class NativeChapter:
-    """Adaptador do capítulo Aidoku para os formatos de saída."""
+    """Aidoku chapter adapter for the output formats."""
 
     index: int
     key: str
@@ -44,7 +44,7 @@ class NativeChapter:
 
 
 class NativeDownloader:
-    """Baixa capítulos via AidokuCatalog usando a mesma estrutura de pastas."""
+    """Downloads chapters via AidokuCatalog using the same folder layout."""
 
     def __init__(
         self,
@@ -57,7 +57,7 @@ class NativeDownloader:
         self.retries = retries
 
     # ------------------------------------------------------------------ #
-    # listagem / seleção
+    # listing / selection
 
     def list_chapters(self, composite_id: str, no_oneshot: bool = False) -> list[NativeChapter]:
         details = self.catalog.manga_details(composite_id)
@@ -97,7 +97,7 @@ class NativeDownloader:
         items = chapters
         if spec and spec.strip().lower() not in ("all", "tudo"):
             items = self._select_by_spec(chapters, spec)
-        # start/end numéricos (do mangadex-downloader)
+        # numeric start/end (from mangadex-downloader)
         if start_chapter is not None or end_chapter is not None:
             lo = start_chapter if start_chapter is not None else float("-inf")
             hi = end_chapter if end_chapter is not None else float("inf")
@@ -127,7 +127,7 @@ class NativeDownloader:
                 try:
                     lo, hi = float(start_s), float(end_s)
                 except ValueError as e:
-                    raise ChapterNotFound(f"faixa inválida: '{part}'") from e
+                    raise ChapterNotFound(f"invalid range: '{part}'") from e
                 for num, c in by_num.items():
                     if lo <= num <= hi:
                         selected[c.key] = c
@@ -135,16 +135,16 @@ class NativeDownloader:
                 try:
                     num = float(part)
                 except ValueError as e:
-                    raise ChapterNotFound(f"capítulo inválido: '{part}'") from e
+                    raise ChapterNotFound(f"invalid chapter: '{part}'") from e
                 c = by_num.get(num)
                 if c:
                     selected[c.key] = c
                 else:
-                    log.warning("capítulo %s não encontrado", part)
+                    log.warning("chapter %s not found", part)
         return [c for c in chapters if c.key in selected]
 
     def group_volumes(self, chapters: list[NativeChapter]) -> list[tuple[float | None, list[NativeChapter]]]:
-        """Agrupa capítulos por volume, preservando a ordem de descoberta."""
+        """Groups chapters by volume, preserving discovery order."""
         groups: dict[float | None, list[NativeChapter]] = {}
         order: list[float | None] = []
         for c in chapters:
@@ -153,7 +153,7 @@ class NativeDownloader:
                 groups[vol] = []
                 order.append(vol)
             groups[vol].append(c)
-        # volumes None vão por último
+        # None volumes go last
         order.sort(key=lambda v: (v is None, v if v is not None else 0))
         return [(v, groups[v]) for v in order]
 
@@ -170,13 +170,13 @@ class NativeDownloader:
         dest.mkdir(parents=True, exist_ok=True)
         marker = dest / ".complete"
         if marker.is_file():
-            log.info("capítulo já baixado, pulando: %s", dest.name)
+            log.info("chapter already downloaded, skipping: %s", dest.name)
             return dest
 
         source_id, _ = composite_id.split("::", 1)
         pages = self.catalog.chapter_pages(composite_id, chapter.key)
         indices = parse_page_range(pages_spec, len(pages))
-        log.info("baixando '%s' (%d páginas)", chapter.name, len(indices))
+        log.info("downloading '%s' (%d pages)", chapter.name, len(indices))
 
         def fetch(i: int) -> tuple[int, bytes]:
             last_err: Exception | None = None
@@ -187,11 +187,11 @@ class NativeDownloader:
                     last_err = e
                     delay = min(2**attempt, 10)
                     log.warning(
-                        "página %d falhou (%d/%d): %s — retry em %ds",
+                        "page %d failed (%d/%d): %s — retrying in %ds",
                         i + 1, attempt, self.retries, e, delay,
                     )
                     time.sleep(delay)
-            raise RuntimeError(f"página {i + 1} falhou após {self.retries} tentativas") from last_err
+            raise RuntimeError(f"page {i + 1} failed after {self.retries} attempts") from last_err
 
         from .downloader import ChapterDownloader as _CD
 
@@ -209,7 +209,7 @@ class NativeDownloader:
         return dest
 
     def download_cover(self, composite_id: str, dest_dir: Path) -> Path | None:
-        """Baixa a capa do mangá para dest_dir (retorna None se não houver)."""
+        """Downloads the manga cover to dest_dir (returns None if absent)."""
         from .downloader import ChapterDownloader as _CD
 
         source_id, _ = composite_id.split("::", 1)

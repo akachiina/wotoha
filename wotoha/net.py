@@ -19,9 +19,9 @@ log = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    """Limita a N chamadas por período de `per` segundos.
+    """Limits to N calls per `per` seconds.
 
-    Sem dependências externas (token bucket simplificado).
+    No external dependencies (simplified token bucket).
     """
 
     def __init__(self, calls: int, per: float) -> None:
@@ -74,7 +74,7 @@ def apply_network_options(
         scheme = urlparse(proxy).scheme or "http"
         if scheme not in ("http", "https", "socks4", "socks5", "socks5h"):
             raise ValueError(
-                f"proxy inválido: '{proxy}' (use http(s):// ou socks5://; "
+                f"invalid proxy: '{proxy}' (use http(s):// or socks5://; "
                 "socks requer pip install requests[socks])"
             )
         session.proxies = {"http": proxy, "https": proxy}

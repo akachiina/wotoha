@@ -1,4 +1,4 @@
-"""ComicInfo.xml — metadados no padrão ComicRack/Anansi (Kavita, Komga, Tachiyomi).
+"""ComicInfo.xml — metadata in the ComicRack/Anansi format (Kavita, Komga, Tachiyomi).
 
 Portado do ComicInfoPlugin do mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/format/comicinfo.py).
@@ -83,7 +83,7 @@ def comicinfo_xml(
 
 
 def write_comicinfo(path, manga: dict, chapter: dict | None = None) -> None:
-    """Escreve ComicInfo.xml em `path` a partir dos metadados do mangá/capítulo."""
+    """Writes ComicInfo.xml to `path` from the manga/chapter metadata."""
     from pathlib import Path
 
     path = Path(path)

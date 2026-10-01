@@ -41,7 +41,7 @@ class SuwayomiClient:
             resp = self.session.request(method, self._url(path), timeout=120, **kwargs)
         except requests.exceptions.ConnectionError as e:
             raise ServerNotRunning(
-                f"Não foi possível conectar em {self.base_url}. "
+                f"Could not connect to {self.base_url}. "
                 "Inicie o servidor com: wotoha server start"
             ) from e
         resp.raise_for_status()
@@ -51,7 +51,7 @@ class SuwayomiClient:
         return self._request("GET", path, **kwargs)
 
     def is_up(self) -> bool:
-        """Verifica se o servidor está acessível."""
+        """Checks whether the server is reachable."""
         try:
             self._request("GET", "/settings/network/timeout")
         except Exception:
@@ -83,7 +83,7 @@ class SuwayomiClient:
             return self._get(f"/source/{source_id}").json()
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                raise SourceNotFound(f"Source '{source_id}' não encontrado") from e
+                raise SourceNotFound(f"Source '{source_id}' not found") from e
             raise
 
     def get_source_filters(self, source_id: str) -> list[dict[str, Any]]:
@@ -115,7 +115,7 @@ class SuwayomiClient:
             return self._get(f"/manga/{manga_id}").json()
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                raise MangaNotFound(f"Mangá {manga_id} não encontrado") from e
+                raise MangaNotFound(f"Manga {manga_id} not found") from e
             raise
 
     def get_manga_full(self, manga_id: int) -> dict[str, Any]:
@@ -123,11 +123,11 @@ class SuwayomiClient:
             return self._get(f"/manga/{manga_id}/full").json()
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                raise MangaNotFound(f"Mangá {manga_id} não encontrado") from e
+                raise MangaNotFound(f"Manga {manga_id} not found") from e
             raise
 
     def get_chapters(self, manga_id: int) -> list[dict[str, Any]]:
-        """Lista de capítulos do mangá.
+        """The manga's chapter list.
 
         Endpoint: GET /manga/{mangaId}/chapters
         (o /full nem sempre inclui chapters, por isso usamos o endpoint dedicado)
@@ -138,7 +138,7 @@ class SuwayomiClient:
         return self._get(f"/manga/{manga_id}/chapter/{chapter_index}").json()
 
     def get_page_image(self, manga_id: int, chapter_index: int, page_index: int) -> bytes:
-        """Baixa a imagem de uma página (o server resolve hotlink/proteção).
+        """Downloads a page image (the server handles hotlink/protection).
 
         Endpoint: GET /manga/{mangaId}/chapter/{chapterIndex}/page/{index}
         """

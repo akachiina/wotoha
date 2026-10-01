@@ -1,8 +1,8 @@
-"""CLI do wotoha.
+"""wotoha CLI.
 
 Engines:
-- aidoku (default): runtime WASM nativo, sem Java
-- suwayomi: backend legado via Suwayomi-Server (opcional)
+- aidoku (default): native WASM runtime, no Java
+- suwayomi: legacy backend via Suwayomi-Server (optional)
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ log = logging.getLogger("wotoha")
 def print_manga_table(mangas: list[dict], title: str, id_key: str = "id") -> None:
     table = Table(title=title, show_lines=False)
     table.add_column("ID", style="cyan", overflow="fold")
-    table.add_column("Título", style="white", overflow="fold")
+    table.add_column("Title", style="white", overflow="fold")
     if mangas and mangas[0].get("sourceId"):
         table.add_column("Source", style="green")
     if any(m.get("repo") for m in mangas):
@@ -73,15 +73,15 @@ def _suwayomi_client():
     client = SuwayomiClient()
     if not client.is_up():
         err_console.print(
-            f"[red]Suwayomi offline em {config.server_url}.[/red] "
-            "Inicie com: [bold]wotoha server start[/bold]"
+            f"[red]Suwayomi is offline at {config.server_url}.[/red] "
+            "Start it with: [bold]wotoha server start[/bold]"
         )
         sys.exit(1)
     return client
 
 
 # --------------------------------------------------------------------------- #
-# server / extensions (suwayomi legado)
+# server / extensions (legacy suwayomi)
 # --------------------------------------------------------------------------- #
 
 def cmd_server(args) -> None:
@@ -103,33 +103,33 @@ def cmd_extensions(args) -> None:
     client = SuwayomiClient()
     if args.ext_action == "list":
         exts = client.list_extensions()
-        table = Table(title=f"Extensões Suwayomi ({len(exts)})")
+        table = Table(title=f"Suwayomi extensions ({len(exts)})")
         table.add_column("pkgName", style="cyan", overflow="fold")
-        table.add_column("Nome", style="white", overflow="fold")
+        table.add_column("Name", style="white", overflow="fold")
         table.add_column("Lang", style="green")
-        table.add_column("Instalada", style="magenta")
+        table.add_column("Installed", style="magenta")
         for e in exts:
             table.add_row(
                 e.get("pkgName") or "?",
                 e.get("name") or "?",
                 e.get("lang") or "?",
-                "sim" if e.get("installed", e.get("isInstalled")) else "não",
+                "yes" if e.get("installed", e.get("isInstalled")) else "no",
             )
         console.print(table)
     elif args.ext_action == "install":
         for pkg in args.pkg:
-            print(f"Instalando {pkg}...")
+            print(f"Installing {pkg}...")
             client.install_extension(pkg)
             print(f"  OK: {pkg}")
     elif args.ext_action == "uninstall":
         for pkg in args.pkg:
-            print(f"Desinstalando {pkg}...")
+            print(f"Uninstalling {pkg}...")
             client.uninstall_extension(pkg)
             print(f"  OK: {pkg}")
 
 
 # --------------------------------------------------------------------------- #
-# sources (aidoku nativo + suwayomi)
+# sources (native aidoku + suwayomi)
 # --------------------------------------------------------------------------- #
 
 def cmd_sources(args) -> None:
@@ -137,9 +137,9 @@ def cmd_sources(args) -> None:
         from .client import SuwayomiClient
 
         sources = SuwayomiClient().list_sources()
-        table = Table(title=f"Sources Suwayomi ({len(sources)})")
+        table = Table(title=f"Suwayomi sources ({len(sources)})")
         table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Nome", style="white")
+        table.add_column("Name", style="white")
         table.add_column("Lang", style="green")
         for s in sources:
             table.add_row(s["id"], s.get("displayName") or s.get("name") or "?", s.get("lang") or "?")
@@ -171,21 +171,21 @@ def cmd_sources(args) -> None:
         installed_entries = list_installed()
         installed = {s["id"] for s in installed_entries}
         if getattr(args, "index", None):
-            # com --index explícito: mostra só aquele índice
+            # with an explicit --index: show that index only
             entries = fetch_index_safe(index_url)[0] or []
             repo_name = args.index
             available: dict[str, tuple[str, dict]] = {s["id"]: (repo_name, s) for s in entries}
         else:
             available, unreachable = aggregate_indexes()
             for r in unreachable:
-                err_console.print(f"[yellow]⚠ repo '{r}' indisponível.[/yellow]")
+                err_console.print(f"[yellow]⚠ repo '{r}' is unreachable.[/yellow]")
         all_ids = sorted(set(installed) | set(available))
-        table = Table(title=f"Sources Aidoku — {len(installed)} instalados, {len(all_ids)} disponíveis")
+        table = Table(title=f"Aidoku sources — {len(installed)} installed, {len(all_ids)} available")
         table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Nome", style="white", overflow="fold")
+        table.add_column("Name", style="white", overflow="fold")
         table.add_column("Lang", style="green", overflow="fold")
         table.add_column("Repo", style="yellow")
-        table.add_column("Instalado", style="magenta")
+        table.add_column("Installed", style="magenta")
 
         def _lang_of(sid: str) -> str:
             if sid in available:
@@ -201,7 +201,7 @@ def cmd_sources(args) -> None:
                 (repos_of[0][1].get("name") if repos_of else next((e["name"] for e in installed_entries if e["id"] == sid), "?")),
                 _lang_of(sid),
                 repo_label,
-                "sim" if sid in installed else "",
+                "yes" if sid in installed else "",
             )
         console.print(table)
     elif action == "search":
@@ -213,7 +213,7 @@ def cmd_sources(args) -> None:
         else:
             agg, unreachable = aggregate_indexes()
             for r in unreachable:
-                err_console.print(f"[yellow]⚠ repo '{r}' indisponível.[/yellow]")
+                err_console.print(f"[yellow]⚠ repo '{r}' is unreachable.[/yellow]")
             repo_by_id = {sid: "+".join(r for r, _ in v) for sid, v in agg.items()}
             catalog_by_id = {sid: v[0][1] for sid, v in agg.items()}
         results = [
@@ -223,7 +223,7 @@ def cmd_sources(args) -> None:
         ]
         table = Table(title=f"Aidoku: '{args.term}' ({len(results)})")
         table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Nome", style="white")
+        table.add_column("Name", style="white")
         table.add_column("Lang", style="green", overflow="fold")
         table.add_column("Repo", style="yellow")
         for sid, entry in results:
@@ -235,7 +235,7 @@ def cmd_sources(args) -> None:
             )
         console.print(table)
     elif action == "install":
-        from .aidoku_store import find_source, install
+        from .aidoku_store import install
 
         for sid in args.source_id:
             try:
@@ -244,46 +244,46 @@ def cmd_sources(args) -> None:
                 else:
                     found = find_source(sid)
                     if not found:
-                        err_console.print(f"[red]'{sid}' não encontrado em nenhum repo.[/red] Use: wotoha sources search <termo>")
+                        err_console.print(f"[red]'{sid}' not found in any repo.[/red] Try: wotoha sources search <term>")
                         sys.exit(1)
                     install(sid, index_url=found[1])
                 console.print(f"[green]OK:[/green] {sid}")
             except KeyError:
-                err_console.print(f"[red]'{sid}' não está no índice.[/red] Use: wotoha sources search <termo>")
+                err_console.print(f"[red]'{sid}' is not in the index.[/red] Try: wotoha sources search <term>")
                 sys.exit(1)
     elif action == "uninstall":
         from .aidoku_store import uninstall
 
         for sid in args.source_id:
             if uninstall(sid):
-                console.print(f"[green]removido:[/green] {sid}")
+                console.print(f"[green]removed:[/green] {sid}")
             else:
-                console.print(f"[yellow]não instalado:[/yellow] {sid}")
+                console.print(f"[yellow]not installed:[/yellow] {sid}")
     elif action == "repo":
         repo_action = getattr(args, "repo_action", None) or "list"
         if repo_action == "list":
             repos = list_repos()
-            table = Table(title=f"Repositórios de sources ({len(repos)})")
-            table.add_column("Nome", style="cyan", no_wrap=True)
+            table = Table(title=f"Source repositories ({len(repos)})")
+            table.add_column("Name", style="cyan", no_wrap=True)
             table.add_column("URL", style="white", overflow="fold")
             for name, url in repos.items():
                 table.add_row(name, url)
             console.print(table)
-            console.print("[dim]Uso: wotoha sources install --index <nome|url> <source_id>[/dim]")
+            console.print("[dim]Usage: wotoha sources install --index <name|url> <source_id>[/dim]")
         elif repo_action == "add":
             add_repo(args.name, args.url)
             console.print(f"[green]OK:[/green] repo '{args.name}' -> {args.url}")
         elif repo_action == "remove":
             if remove_repo(args.name):
-                console.print(f"[green]removido:[/green] {args.name}")
+                console.print(f"[green]removed:[/green] {args.name}")
             else:
-                err_console.print(f"[yellow]'{args.name}' não cadastrado.[/yellow]")
+                err_console.print(f"[yellow]'{args.name}' is not registered.[/yellow]")
     elif action == "dir":
         console.print(sources_dir())
 
 
 # --------------------------------------------------------------------------- #
-# search / info / download (dispatch por engine)
+# search / info / download (per-engine dispatch)
 # --------------------------------------------------------------------------- #
 
 def cmd_search(args) -> None:
@@ -293,7 +293,7 @@ def cmd_search(args) -> None:
             err_console.print("Use --source <id>.")
             sys.exit(2)
         data = _suwayomi_client().search(args.source, args.query, args.page)
-        print_manga_table(data.get("mangaList", []), f"Resultados para '{args.query}'")
+        print_manga_table(data.get("mangaList", []), f"Results for '{args.query}'")
         return
 
     catalog = _aidoku_catalog()
@@ -301,7 +301,7 @@ def cmd_search(args) -> None:
 
     targets = [args.source] if args.source else [s["id"] for s in list_installed()]
     if not targets:
-        err_console.print("Nenhum source instalado. Rode: wotoha sources install <id>")
+        err_console.print("No sources installed. Run: wotoha sources install <id>")
         sys.exit(1)
 
     results: list[dict] = []
@@ -310,7 +310,7 @@ def cmd_search(args) -> None:
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
         BarColumn(), TaskProgressColumn(), console=console,
     ) as progress:
-        task = progress.add_task("Buscando...", total=len(targets))
+        task = progress.add_task("Searching...", total=len(targets))
         for sid in targets:
             try:
                 data = catalog.search(sid, args.query, args.page)
@@ -319,7 +319,7 @@ def cmd_search(args) -> None:
                 results.extend(data["mangaList"])
             except Exception as e:  # noqa: BLE001
                 failed.append((sid, str(e)[:80]))
-                log.debug("source %s falhou: %s", sid, e)
+                log.debug("source %s failed: %s", sid, e)
             finally:
                 progress.advance(task)
 
@@ -327,24 +327,24 @@ def cmd_search(args) -> None:
         err_console.print(f"[red]✗ {sid}:[/red] {err}")
     if failed and not results:
         err_console.print(
-            "[yellow]Dica: o source pode não estar instalado — "
-            "rode 'wotoha sources install <id>' ou 'wotoha sources list'.[/yellow]"
+            "[yellow]Hint: the source may not be installed — "
+            "run 'wotoha sources install <id>' or 'wotoha sources list'.[/yellow]"
         )
     if not results:
-        console.print("[yellow]Nenhum resultado.[/yellow]")
+        console.print("[yellow]No results.[/yellow]")
         return
-    print_manga_table(results, f"Resultados para '{args.query}' ({len(results)})")
-    console.print("[dim]Dica: wotoha info <ID> para detalhes.[/dim]")
+    print_manga_table(results, f"Results for '{args.query}' ({len(results)})")
+    console.print("[dim]Hint: wotoha info <ID> for details.[/dim]")
 
     if getattr(args, "pick", False):
         from .batch import pick_results
 
         chosen = pick_results(results)
         if not chosen:
-            console.print("[yellow]Nada selecionado.[/yellow]")
+            console.print("[yellow]Nothing selected.[/yellow]")
             return
         ids = [m["id"] for m in chosen]
-        console.print(f"Baixando {len(ids)} mangá(s)...")
+        console.print(f"Downloading {len(ids)} manga...")
         args.manga_id = ids
         args.batch_from_file = None
         args.pick = False
@@ -371,12 +371,12 @@ def cmd_info(args) -> None:
         chapters = client.get_chapters(args.manga_id)
         console.print(f"[bold cyan]{full.get('title')}[/bold cyan]")
         if full.get("author"):
-            console.print(f"Autor: {full['author']}")
+            console.print(f"Author: {full['author']}")
         if full.get("genre"):
-            console.print(f"Gêneros: {', '.join(full['genre'])}")
+            console.print(f"Genres: {', '.join(full['genre'])}")
         if full.get("description"):
             console.print(f"\n{full['description']}\n")
-        console.print(f"Capítulos: {len(chapters)}")
+        console.print(f"Chapters: {len(chapters)}")
         return
 
     catalog = _aidoku_catalog()
@@ -384,9 +384,9 @@ def cmd_info(args) -> None:
     console.print(f"[bold cyan]{d['title']}[/bold cyan] [dim]({d['sourceId']})[/dim]")
     meta = []
     if d.get("authors"):
-        meta.append(f"Autor: {', '.join(d['authors'])}")
+        meta.append(f"Author: {', '.join(d['authors'])}")
     if d.get("artists") and set(d["artists"]) - set(d.get("authors") or []):
-        meta.append(f"Artista: {', '.join(d['artists'])}")
+        meta.append(f"Artist: {', '.join(d['artists'])}")
     if d.get("status"):
         meta.append(f"Status: {d['status']}")
     if d.get("url"):
@@ -398,7 +398,7 @@ def cmd_info(args) -> None:
     if d.get("description"):
         console.print(f"\n{d['description']}\n")
     chapters = d.get("chapters") or []
-    console.print(f"Capítulos: {len(chapters)}")
+    console.print(f"Chapters: {len(chapters)}")
     by_lang: dict[str, int] = {}
     locked_count = 0
     last_date = None
@@ -411,35 +411,35 @@ def cmd_info(args) -> None:
             last_date = max(last_date or 0, c["dateUploaded"])
     if len(by_lang) > 1 or (by_lang and next(iter(by_lang)) != "?"):
         dist = ", ".join(f"{k}: {v}" for k, v in sorted(by_lang.items()))
-        console.print(f"Idiomas: {dist}")
+        console.print(f"Languages: {dist}")
     if locked_count:
-        console.print(f"Bloqueados: {locked_count}")
+        console.print(f"Locked: {locked_count}")
     if last_date:
         from datetime import datetime, timezone
 
         dt = datetime.fromtimestamp(last_date, tz=timezone.utc)
-        console.print(f"Último capítulo: {dt.strftime('%Y-%m-%d')}")
+        console.print(f"Latest chapter: {dt.strftime('%Y-%m-%d')}")
     if chapters:
-        console.print("\n[bold]Mais recentes:[/bold]")
+        console.print("\n[bold]Most recent:[/bold]")
         for c in chapters[:5]:
             num = c.get("chapterNumber")
-            label = f"cap. {num:g}" if num is not None else c.get("title") or "?"
+            label = f"ch. {num:g}" if num is not None else c.get("title") or "?"
             lang = c.get("language")
             suffix = f" [{lang}]" if lang and len(by_lang) > 1 else ""
             console.print(f"  {c['key']} — {label}{suffix}")
         if len(chapters) > 5:
-            console.print(f"  ... e mais {len(chapters) - 5}")
+            console.print(f"  ... and {len(chapters) - 5} more")
 
 
 def _set_language(args) -> None:
-    """--language sobrepõe WOTOHA_LANGUAGES pro filtro dos sources multi-idioma."""
+    """--language overrides WOTOHA_LANGUAGES for the multi-language source filter."""
     lang = getattr(args, "language", None)
     if lang:
         config.languages = lang
 
 
 def _apply_delay(args) -> None:
-    """Aplica --delay-requests configurado via CLI (global)."""
+    """Applies --delay-requests from the CLI (global)."""
     delay = getattr(args, "delay_requests", None)
     if delay:
         from . import net
@@ -453,7 +453,7 @@ def _apply_delay(args) -> None:
 
 
 def _resolve_mangas(args, catalog, downloader) -> list[dict]:
-    """Resolve a lista de mangás a baixar (batch: IDs múltiplos ou arquivo)."""
+    """Resolves the list of manga to download (batch: multiple IDs or file)."""
     ids: list[str] = list(args.manga_id or [])
     if getattr(args, "batch_file", None):
         ids = []
@@ -462,7 +462,7 @@ def _resolve_mangas(args, catalog, downloader) -> list[dict]:
             if line and not line.startswith("#"):
                 ids.append(line)
     if not ids:
-        err_console.print("Informe ID(s) ou use --batch-from-file.")
+        err_console.print("Provide ID(s) or use --batch-from-file.")
         sys.exit(2)
     mangas = []
     for mid in ids:
@@ -486,7 +486,7 @@ def _download_aidoku(args) -> None:
     fmt = get_format(args.format, config.download_dir, mode=mode)
     needs_files = not (
         isinstance(fmt, RawFormat) and mode == "chapter"
-    )  # raw chapter rename o dir; outros modos precisam de arquivos
+    )  # raw chapter renames the dir; other modes need real files
     base_tmp = config.download_dir / ".cache"
     base_tmp.mkdir(parents=True, exist_ok=True)
 
@@ -503,7 +503,7 @@ def _download_aidoku(args) -> None:
             end_chapter=args.end_chapter,
         )
         if not selected:
-            console.print("[yellow]Nenhum capítulo selecionado.[/yellow]")
+            console.print("[yellow]No chapters selected.[/yellow]")
             continue
 
         manga_stub = {
@@ -523,15 +523,15 @@ def _download_aidoku(args) -> None:
         order = selected[::-1] if args.order == "asc" else selected
 
         console.print(
-            f"Baixando [bold cyan]{details['title']}[/bold cyan] — "
-            f"{len(order)} capítulo(s), formato {args.format.upper()}, modo {mode}"
+            f"Downloading [bold cyan]{details['title']}[/bold cyan] — "
+            f"{len(order)} chapter(s), format {args.format.upper()}, mode {mode}"
         )
 
         with Progress(
             SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
             BarColumn(), TaskProgressColumn(), TimeElapsedColumn(), console=console,
         ) as progress:
-            task = progress.add_task("Baixando...", total=len(order))
+            task = progress.add_task("Downloading...", total=len(order))
             for chapter in order:
                 progress.update(task, description=f"[cyan]{safe_name(chapter.name)[:40]}")
                 workdir = base_tmp / safe_name(f"{composite_id}-{chapter.key}")
@@ -547,7 +547,7 @@ def _download_aidoku(args) -> None:
                 progress.advance(task)
 
         fmt.finish(manga_stub)
-    console.print("[green]Concluído.[/green] Conferir:", config.download_dir.resolve())
+    console.print("[green]Done.[/green] Output at:", config.download_dir.resolve())
 
 
 def _download_suwayomi(args) -> None:
@@ -556,7 +556,7 @@ def _download_suwayomi(args) -> None:
 
     _apply_delay(args)
     client = SuwayomiClient()
-    manga_id = int(args.manga_id[0])  # suwayomi usa id numérico único
+    manga_id = int(args.manga_id[0])  # suwayomi uses a single numeric id
     manga = client.get_manga(manga_id)
     dl = ChapterDownloader(client, workers=args.workers, retries=args.retries)
     chapters = dl.list_chapters(manga_id, no_oneshot=args.no_oneshot)
@@ -567,7 +567,7 @@ def _download_suwayomi(args) -> None:
         end_chapter=args.end_chapter,
     )
     if not selected:
-        console.print("[yellow]Nenhum capítulo selecionado.[/yellow]")
+        console.print("[yellow]No chapters selected.[/yellow]")
         return
 
     mode = getattr(args, "mode", "chapter")
@@ -597,15 +597,15 @@ def _download_suwayomi(args) -> None:
     order = selected[::-1] if args.order == "asc" else selected
 
     console.print(
-        f"Baixando [bold cyan]{manga_meta['title']}[/bold cyan] — "
-        f"{len(order)} capítulo(s), formato {args.format.upper()}, modo {mode}"
+        f"Downloading [bold cyan]{manga_meta['title']}[/bold cyan] — "
+        f"{len(order)} chapter(s), format {args.format.upper()}, mode {mode}"
     )
 
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
         BarColumn(), TaskProgressColumn(), TimeElapsedColumn(), console=console,
     ) as progress:
-        task = progress.add_task("Baixando...", total=len(order))
+        task = progress.add_task("Downloading...", total=len(order))
         for chapter in order:
             progress.update(task, description=f"[cyan]{safe_name(chapter.name)[:40]}")
             workdir = base_tmp / safe_name(f"{manga_id}-{chapter.index}")
@@ -621,7 +621,7 @@ def _download_suwayomi(args) -> None:
             progress.advance(task)
 
     fmt.finish(manga_meta)
-    console.print("[green]Concluído.[/green] Conferir:", config.download_dir.resolve())
+    console.print("[green]Done.[/green] Output at:", config.download_dir.resolve())
 
 
 def cmd_download(args) -> None:
@@ -638,20 +638,20 @@ def cmd_download(args) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="wotoha",
-        description="Manga downloader CLI com extensões Aidoku (WASM) — leve e sem Java.",
+        description="Manga downloader CLI with Aidoku (WASM) extensions — lightweight, Java-free.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="logs detalhados")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose logs")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # server / extensions (suwayomi legado)
-    p_server = sub.add_parser("server", help="[suwayomi] Gerencia o Suwayomi-Server")
+    # server / extensions (legacy suwayomi)
+    p_server = sub.add_parser("server", help="[suwayomi] Manage the Suwayomi-Server")
     p_server.add_argument("action", choices=["download", "start", "stop", "status"])
     p_server.add_argument("--force", action="store_true")
     p_server.set_defaults(func=cmd_server)
 
-    p_ext = sub.add_parser("extensions", aliases=["ext"], help="[suwayomi] Extensões Mihon")
+    p_ext = sub.add_parser("extensions", aliases=["ext"], help="[suwayomi] Mihon extensions")
     ext_sub = p_ext.add_subparsers(dest="ext_action", required=True)
     ext_sub.add_parser("list")
     p_i = ext_sub.add_parser("install"); p_i.add_argument("pkg", nargs="+")
@@ -659,65 +659,65 @@ def build_parser() -> argparse.ArgumentParser:
     p_ext.set_defaults(func=cmd_extensions)
 
     # sources
-    p_src = sub.add_parser("sources", help="Gerencia sources Aidoku")
+    p_src = sub.add_parser("sources", help="Manage Aidoku sources")
     src_sub = p_src.add_subparsers(dest="source_action")
-    # índice alternativo (repos de terceiros), aceito em list/search/install/uninstall
-    # e no próprio 'sources' (SUPPRESS no subcomando pra não sobrescrever o do pai)
+    # alternative index (third-party repos), accepted by list/search/install/uninstall
+    # and by 'sources' itself (SUPPRESS on subcommands so it doesn't override the parent)
     _index_parent = argparse.ArgumentParser(add_help=False)
     _index_parent.add_argument(
-        "--index", default=argparse.SUPPRESS, metavar="URL",
-        help="índice alternativo de sources Aidoku (ex.: repos de terceiros como "
+        "--index", default=argparse.SUPPRESS, metavar="NAME|URL",
+        help="alternative Aidoku source index (third-party repos, e.g. "
              "https://smexhy.github.io/yomu-aidoku-sources/index.min.json)",
     )
-    src_sub.add_parser("list", help="Lista instalados + disponíveis", parents=[_index_parent])
-    p_ss = src_sub.add_parser("search", help="Busca no índice", parents=[_index_parent])
+    src_sub.add_parser("list", help="List installed + available sources", parents=[_index_parent])
+    p_ss = src_sub.add_parser("search", help="Search the indexes", parents=[_index_parent])
     p_ss.add_argument("term")
-    p_si = src_sub.add_parser("install", help="Instala source(s)", parents=[_index_parent])
+    p_si = src_sub.add_parser("install", help="Install source(s)", parents=[_index_parent])
     p_si.add_argument("source_id", nargs="+")
     p_su = src_sub.add_parser("uninstall", help="Remove source(s)", parents=[_index_parent])
     p_su.add_argument("source_id", nargs="+")
-    src_sub.add_parser("dir", help="Mostra a pasta de sources")
-    p_repo = src_sub.add_parser("repo", help="Gerencia repositórios de sources")
+    src_sub.add_parser("dir", help="Show the sources folder")
+    p_repo = src_sub.add_parser("repo", help="Manage source repositories")
     repo_sub = p_repo.add_subparsers(dest="repo_action")
-    repo_sub.add_parser("list", help="Lista repositórios cadastrados")
-    p_ra = repo_sub.add_parser("add", help="Cadastra um repositório")
-    p_ra.add_argument("name", help="nome curto (ex.: yomu)")
-    p_ra.add_argument("url", help="URL do index.min.json")
-    p_rr = repo_sub.add_parser("remove", help="Remove um repositório")
+    repo_sub.add_parser("list", help="List registered repositories")
+    p_ra = repo_sub.add_parser("add", help="Register a repository")
+    p_ra.add_argument("name", help="short name (e.g. yomu)")
+    p_ra.add_argument("url", help="URL of the index.min.json")
+    p_rr = repo_sub.add_parser("remove", help="Remove a repository")
     p_rr.add_argument("name")
     p_src.add_argument(
-        "--index", default=None, metavar="URL",
-        help="índice alternativo de sources Aidoku (repos de terceiros)",
+        "--index", default=None, metavar="NAME|URL",
+        help="alternative Aidoku source index (third-party repos)",
     )
     p_src.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_src.set_defaults(func=cmd_sources)
 
     # search
-    p_search = sub.add_parser("search", help="Busca mangás")
+    p_search = sub.add_parser("search", help="Search manga")
     p_search.add_argument("query")
-    p_search.add_argument("--source", help="ID do source (default: todos instalados)")
+    p_search.add_argument("--source", help="source ID (default: all installed)")
     p_search.add_argument("--page", type=int, default=1)
     p_search.add_argument(
         "--language", "-l", default=None, metavar="LANG",
-        help="idioma pro filtro de capítulos dos sources (ex.: en, pt-BR); "
-             "padrão: WOTOHA_LANGUAGES (atual: %(default)s)",
+        help="language for the sources' chapter filter (e.g. en, pt-BR); "
+             "default: WOTOHA_LANGUAGES (current: %(default)s)",
     )
     p_search.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_search.set_defaults(func=cmd_search)
 
     # info
-    p_info = sub.add_parser("info", help="Detalhes do mangá")
-    p_info.add_argument("manga_id", help="ID retornado pela busca (sourceId::key)")
+    p_info = sub.add_parser("info", help="Manga details")
+    p_info.add_argument("manga_id", help="ID returned by search (sourceId::key)")
     p_info.add_argument(
         "--language", "-l", default=None, metavar="LANG",
-        help="idioma pro filtro de capítulos dos sources (ex.: en, pt-BR)",
+        help="language for the sources' chapter filter (e.g. en, pt-BR)",
     )
     p_info.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_info.set_defaults(func=cmd_info)
 
     # download
-    p_dl = sub.add_parser("download", help="Baixa capítulos")
-    p_dl.add_argument("manga_id", nargs="+", help="ID(s) da busca (batch: vários IDs)")
+    p_dl = sub.add_parser("download", help="Download chapters")
+    p_dl.add_argument("manga_id", nargs="+", help="ID(s) from search (batch: multiple IDs)")
     p_dl.add_argument(
         "--format", "-f", choices=["raw", "epub", "cbz", "cb7", "pdf"],
         default=config.default_format,
@@ -726,43 +726,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=["chapter", "volume", "single"],
         default="chapter",
-        help="empacotamento: por capítulo (default), por volume ou tudo num arquivo só",
+        help="packaging: per chapter (default), per volume, or a single file",
     )
     p_dl.add_argument("--chapters", "-c", default=None, help='"all", "latest", "1-10,15"')
     p_dl.add_argument("--start-chapter", type=float, default=None)
     p_dl.add_argument("--end-chapter", type=float, default=None)
     p_dl.add_argument(
         "--pages", default=None,
-        help='faixa de páginas: "2", "1-10", "3--" (as 3 últimas)',
+        help='page range: "2", "1-10", "3--" (last 3)',
     )
-    p_dl.add_argument("--no-oneshot", action="store_true", help="ignora capítulos oneshot")
+    p_dl.add_argument("--no-oneshot", action="store_true", help="skip oneshot chapters")
     p_dl.add_argument(
         "--language", "-l", default=None, metavar="LANG",
-        help="idioma dos capítulos em sources multi-idioma (ex.: en, pt-BR); "
-             "padrão: WOTOHA_LANGUAGES",
+        help="chapter language on multi-language sources (e.g. en, pt-BR); "
+             "default: WOTOHA_LANGUAGES",
     )
     p_dl.add_argument(
         "--order", choices=["desc", "asc"], default="desc",
-        help="ordem de download (default: mais recente primeiro)",
+        help="download order (default: newest first)",
     )
-    p_dl.add_argument("--cover", action="store_true", help="baixa a capa do mangá")
+    p_dl.add_argument("--cover", action="store_true", help="download the manga cover")
     p_dl.add_argument("--batch-from-file", default=None, metavar="FILE",
-                      help="arquivo com um ID por linha")
+                      help="file with one ID per line")
     p_dl.add_argument("--workers", type=int, default=4)
     p_dl.add_argument("--retries", type=int, default=3)
     p_dl.add_argument(
         "--delay-requests", type=float, default=None, metavar="SEC",
-        help="intervalo mínimo entre requests (rate limit)",
+        help="minimum interval between requests (rate limit)",
     )
-    p_dl.add_argument("--proxy", default=None, help="proxy HTTP/SOCKS (ex.: socks5://localhost:9050)")
+    p_dl.add_argument("--proxy", default=None, help="HTTP/SOCKS proxy (e.g. socks5://localhost:9050)")
     p_dl.add_argument("-o", "--output", default=None)
     p_dl.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_dl.set_defaults(func=cmd_download)
 
-    # search ganha --pick (baixa direto dos resultados)
+    # search gets --pick (downloads straight from results)
     p_search.add_argument(
         "--pick", action="store_true",
-        help="seleciona resultados interativamente e baixa o mais recente de cada",
+        help="select results interactively and download the latest chapter of each",
     )
     p_search.add_argument(
         "--format", "-f", choices=["raw", "epub", "cbz", "cb7", "pdf"],
@@ -791,14 +791,14 @@ def main(argv: list[str] | None = None) -> None:
     try:
         args.func(args)
     except MangaDlError as e:
-        err_console.print(f"[red]Erro:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else "?"
-        err_console.print(f"[red]Erro HTTP {status}:[/red] {e}")
+        err_console.print(f"[red]HTTP error {status}:[/red] {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        err_console.print("\nInterrompido.")
+        err_console.print("\nInterrupted.")
         sys.exit(130)
 
 

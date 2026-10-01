@@ -1,4 +1,4 @@
-"""Pipeline de download de capítulos/páginas via Suwayomi-Server.
+"""Chapter/page download pipeline via Suwayomi-Server.
 
 Conceitos de progresso/retries inspirados no mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/downloader.py).
@@ -29,56 +29,56 @@ def safe_name(name: str, maxlen: int = 120) -> str:
 
 
 def parse_page_range(spec: str | None, total: int) -> list[int]:
-    """Converte --pages em índices 0-based (semântica do mangadex-downloader).
+    """Converts --pages into 0-based indexes (mangadex-downloader semantics).
 
-    - "5"      → só a página 5
-    - "1-10"   → páginas 1 a 10
-    - "5-"     → da página 5 até o fim
-    - "3--"    → as 3 últimas páginas
-    - "-5"     → tudo menos as 5 últimas (end negativo = a partir do fim)
+    - "5"      → page 5 only
+    - "1-10"   → pages 1 through 10
+    - "5-"     → from page 5 to the end
+    - "3--"    → the last 3 pages
+    - "-5"     → everything but the last 5 (negative end = from the end)
     """
     if not spec or not spec.strip():
         return list(range(total))
     s = re.sub(r"\s", "", spec)
 
-    m = re.fullmatch(r"(\d+)--", s)  # últimas N
+    m = re.fullmatch(r"(\d+)--", s)  # last N
     if m:
         n = int(m.group(1))
         return list(range(max(0, total - n), total))
 
-    m = re.fullmatch(r"-(\d+)", s)  # -N: exclui as N últimas
+    m = re.fullmatch(r"-(\d+)", s)  # -N: excludes the last N
     if m:
         n = int(m.group(1))
         end = max(0, total - n)
         return list(range(0, end))
 
-    m = re.fullmatch(r"(\d+)-", s)  # N-: de N até o fim
+    m = re.fullmatch(r"(\d+)-", s)  # N-: from N to the end
     if m:
         start = int(m.group(1))
         if not 1 <= start <= total:
-            raise ChapterNotFound(f"página {start} fora do intervalo (1-{total})")
+            raise ChapterNotFound(f"page {start} out of range (1-{total})")
         return list(range(start - 1, total))
 
     m = re.fullmatch(r"(\d+)-(\d+)", s)  # faixa
     if m:
         start, end = int(m.group(1)), int(m.group(2))
         if start < 1 or end < start:
-            raise ChapterNotFound(f"faixa de páginas inválida: '{spec}'")
+            raise ChapterNotFound(f"invalid page range: '{spec}'")
         return list(range(start - 1, min(end, total)))
 
-    m = re.fullmatch(r"(\d+)", s)  # página única
+    m = re.fullmatch(r"(\d+)", s)  # single page
     if m:
         page = int(m.group(1))
         if not 1 <= page <= total:
-            raise ChapterNotFound(f"página {page} fora do intervalo (1-{total})")
+            raise ChapterNotFound(f"page {page} out of range (1-{total})")
         return [page - 1]
 
-    raise ChapterNotFound(f"especificação de páginas inválida: '{spec}'")
+    raise ChapterNotFound(f"invalid page specification: '{spec}'")
 
 
 @dataclass
 class ChapterRef:
-    """Referência a um capítulo do Suwayomi."""
+    """Reference to a Suwayomi chapter."""
 
     id: int
     index: int  # sourceOrder do Suwayomi (1-based)
@@ -86,7 +86,7 @@ class ChapterRef:
     chapter_number: float
     scanlator: str | None
     page_count: int
-    volume_number: float | None = None  # Suwayomi não expõe volume
+    volume_number: float | None = None  # Suwayomi does not expose volume
 
     @property
     def is_oneshot(self) -> bool:
@@ -98,7 +98,7 @@ class ChapterRef:
 
 
 class ChapterDownloader:
-    """Baixa capítulos de um mangá para o disco."""
+    """Downloads a manga's chapters to disk."""
 
     def __init__(self, client: SuwayomiClient, workers: int = 4, retries: int = 3) -> None:
         self.client = client
@@ -108,7 +108,7 @@ class ChapterDownloader:
     # ------------------------------------------------------------------ #
 
     def list_chapters(self, manga_id: int, no_oneshot: bool = False) -> list[ChapterRef]:
-        """Lista de capítulos (ordenados do mais recente para o mais antigo,
+        """Chapter list (ordered from newest to oldest,
         como o Suwayomi retorna)."""
         chapters: list[dict[str, Any]] = self.client.get_chapters(manga_id)
         refs = [
@@ -133,12 +133,12 @@ class ChapterDownloader:
         start_chapter: float | None = None,
         end_chapter: float | None = None,
     ) -> list[ChapterRef]:
-        """Seleciona capítulos conforme especificação do usuário.
+        """Selects chapters per the user specification.
 
         - None ou "all": todos
-        - "latest": apenas o capítulo mais recente
-        - "1-10,15,20-23": intervalos por **número do capítulo** (não índice)
-        - start_chapter/end_chapter: recorte numérico adicional
+        - "latest": only the most recent chapter
+        - "1-10,15,20-23": ranges by **chapter number** (not index)
+        - start_chapter/end_chapter: additional numeric cut
         """
         if not chapters:
             return []
@@ -170,7 +170,7 @@ class ChapterDownloader:
                 try:
                     start, end = float(start_s), float(end_s)
                 except ValueError as e:
-                    raise MangaDlError(f"Faixa inválida: '{part}'") from e
+                    raise MangaDlError(f"Invalid range: '{part}'") from e
                 for num in by_number:
                     if start <= num <= end:
                         selected[num] = by_number[num]
@@ -178,18 +178,18 @@ class ChapterDownloader:
                 try:
                     num = float(part)
                 except ValueError as e:
-                    raise MangaDlError(f"Número de capítulo inválido: '{part}'") from e
+                    raise MangaDlError(f"Invalid chapter number: '{part}'") from e
                 if num in by_number:
                     selected[num] = by_number[num]
                 else:
-                    log.warning("Capítulo %s não encontrado", part)
-        # mantém a ordem original (mais recente primeiro)
+                    log.warning("Chapter %s not found", part)
+        # keeps the original order (newest first)
         return [c for c in chapters if c.id in {s.id for s in selected.values()}]
 
     # ------------------------------------------------------------------ #
 
     def _fetch_page(self, manga_id: int, chapter_index: int, page_index: int) -> bytes:
-        """Baixa uma página com retries e backoff exponencial."""
+        """Downloads a page with retries and exponential backoff."""
         last_err: Exception | None = None
         for attempt in range(1, self.retries + 1):
             try:
@@ -197,16 +197,16 @@ class ChapterDownloader:
                 if not data:
                     raise DownloadFailed("resposta vazia")
                 return data
-            except Exception as e:  # noqa: BLE001 - retry genérico
+            except Exception as e:  # noqa: BLE001 - generic retry
                 last_err = e
                 delay = min(2 ** attempt, 10)
                 log.warning(
-                    "Página %d falhou (tentativa %d/%d): %s — retry em %ds",
+                    "Page %d failed (attempt %d/%d): %s — retrying in %ds",
                     page_index, attempt, self.retries, e, delay,
                 )
                 time.sleep(delay)
         raise DownloadFailed(
-            f"Página {page_index} falhou após {self.retries} tentativas"
+            f"Page {page_index} failed after {self.retries} attempts"
         ) from last_err
 
     def download_chapter(
@@ -216,33 +216,33 @@ class ChapterDownloader:
         dest: Path,
         pages_spec: str | None = None,
     ) -> Path:
-        """Baixa as páginas de um capítulo para `dest`.
+        """Downloads a chapter's pages to `dest`.
 
         Fluxo do Suwayomi: a primeira chamada a /page/0 faz o servidor buscar a
-        lista de páginas no site (populate do PageTable) e atualizar o pageCount
-        do capítulo. Por isso "aquecemos" com a página 0 antes de paralelizar.
+        the page list on the site (PageTable populate) and update the chapter's pageCount
+        For that reason we "warm up" with page 0 before parallelizing.
         """
         dest.mkdir(parents=True, exist_ok=True)
         marker = dest / ".complete"
         if marker.is_file():
-            log.info("Capítulo já baixado, pulando: %s", dest.name)
+            log.info("Chapter already downloaded, skipping: %s", dest.name)
             return dest
 
         log.info("Baixando '%s'", chapter.name)
 
-        # 1) GET /chapter/{index}: faz o server popular pageCount e a lista de páginas
+        # 1) GET /chapter/{index}: makes the server populate pageCount and the page list
         info = self.client.get_chapter(manga["id"], chapter.index)
         page_count = int(info.get("pageCount") or 0)
         if page_count < 1:
             raise DownloadFailed(
-                f"pageCount inválido ({page_count}) para o capítulo '{chapter.name}'"
+                f"invalid pageCount ({page_count}) for chapter '{chapter.name}'"
             )
 
-        # 2) índices a baixar (respeita --pages)
+        # 2) indexes to download (honors --pages)
         indices = parse_page_range(pages_spec, page_count)
-        log.info("  %d página(s)%s", len(indices), f" de {page_count}" if len(indices) < page_count else "")
+        log.info("  %d page(s)%s", len(indices), f" of {page_count}" if len(indices) < page_count else "")
 
-        # aquecimento: popula a lista de páginas no server (sempre página 0)
+        # warm-up: populates the page list on the server (always page 0)
         if 0 not in indices:
             self._fetch_page(manga["id"], chapter.index, 0)
 

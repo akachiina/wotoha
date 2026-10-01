@@ -38,18 +38,18 @@ def _base_url_of(index_url: str) -> str:
 
 
 def install(source_id: str, index_url: str = DEFAULT_INDEX_URL) -> Path:
-    """Baixa o .aix do source e instala em ~/.wotoha/sources/<id>.aix."""
+    """Downloads the .aix and installs it at ~/.wotoha/sources/<id>.aix."""
     sources = fetch_index(index_url)
     entry = next((s for s in sources if s.get("id") == source_id), None)
     if entry is None:
-        raise KeyError(f"source '{source_id}' não encontrado no índice")
+        raise KeyError(f"source '{source_id}' not found in the index")
 
     url = entry["downloadURL"]
     if not url.startswith("http"):
         url = _base_url_of(index_url) + url
 
     dest = sources_dir() / f"{source_id}.aix"
-    log.info("baixando %s -> %s", url, dest)
+    log.info("downloading %s -> %s", url, dest)
     resp = requests.get(url, timeout=120)
     resp.raise_for_status()
     dest.write_bytes(resp.content)
@@ -66,7 +66,7 @@ def uninstall(source_id: str) -> bool:
     return False
 
 
-# proveniência: de qual índice cada source instalado veio
+# provenance: which index each installed source came from
 
 def _source_repos_file() -> Path:
     return Path(config.sources_dir).expanduser().parent / "source_repos.json"
@@ -98,7 +98,7 @@ def _forget_source_repo(source_id: str) -> None:
 
 
 def repo_of(source_id: str) -> str | None:
-    """Nome curto do repo de origem (ou URL se não tiver nome)."""
+    """Short name of the origin repo (or the URL if it has no name)."""
     f = _source_repos_file()
     if not f.is_file():
         return None
@@ -115,7 +115,7 @@ def repo_of(source_id: str) -> str | None:
 
 
 def list_installed() -> list[dict[str, Any]]:
-    """Metadados de todos os sources instalados (sem bootar WASM)."""
+    """Metadata of all installed sources (without booting WASM)."""
     result = []
     for aix in sorted(sources_dir().glob("*.aix")):
         try:
@@ -134,7 +134,7 @@ def list_installed() -> list[dict[str, Any]]:
                 }
             )
         except Exception as e:  # noqa: BLE001
-            log.warning("source inválido %s: %s", aix.name, e)
+            log.warning("invalid source %s: %s", aix.name, e)
     return result
 
 
@@ -148,7 +148,7 @@ def search_index(term: str, index_url: str = DEFAULT_INDEX_URL) -> list[dict[str
 
 
 # --------------------------------------------------------------------------- #
-# repositórios nomeados (~/.wotoha/repos.json)
+# named repositories (~/.wotoha/repos.json)
 # --------------------------------------------------------------------------- #
 
 BUILTIN_REPOS = {"aidoku": DEFAULT_INDEX_URL}
@@ -167,7 +167,7 @@ def list_repos() -> dict[str, str]:
         try:
             repos.update(json.loads(f.read_text()))
         except Exception as e:  # noqa: BLE001
-            log.warning("repos.json inválido: %s", e)
+            log.warning("invalid repos.json: %s", e)
     return repos
 
 
@@ -199,7 +199,7 @@ def remove_repo(name: str) -> bool:
 
 
 def resolve_index(value: str | None) -> str:
-    """Aceita URL explícita ou nome de repo cadastrado (ex.: 'yomu')."""
+    """Accepts an explicit URL or a registered repo name (e.g. 'yomu')."""
     if not value:
         return DEFAULT_INDEX_URL
     if value.startswith("http"):
@@ -209,13 +209,13 @@ def resolve_index(value: str | None) -> str:
         return repos[value]
     known = ", ".join(sorted(repos))
     raise KeyError(
-        f"repo '{value}' não cadastrado. Use: wotoha sources repo add {value} <url> "
+        f"repo '{value}' is not registered. Use: wotoha sources repo add {value} <url> "
         f"(cadastrados: {known})"
     )
 
 
 def fetch_index_safe(index_url: str) -> tuple[list[dict[str, Any]] | None, str | None]:
-    """fetch_index que não levanta: retorna (sources, erro)."""
+    """fetch_index that doesn't raise: returns (sources, error)."""
     try:
         return fetch_index(index_url), None
     except Exception as e:  # noqa: BLE001
@@ -225,14 +225,14 @@ def fetch_index_safe(index_url: str) -> tuple[list[dict[str, Any]] | None, str |
 def aggregate_indexes() -> tuple[dict[str, list[tuple[str, dict[str, Any]]]], list[str]]:
     """Agrega todos os repos cadastrados.
 
-    Retorna ({source_id: [(repo_nome, entry), ...]}, [repos indisponíveis]).
+    Returns ({source_id: [(repo_name, entry), ...]}, [unreachable repos]).
     """
     out: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     unreachable: list[str] = []
     for name, url in list_repos().items():
         sources, err = fetch_index_safe(url)
         if sources is None:
-            log.warning("índice do repo '%s' indisponível: %s", name, err)
+            log.warning("repo '%s' index unreachable: %s", name, err)
             unreachable.append(name)
             continue
         for s in sources:
@@ -247,7 +247,7 @@ def find_source(source_id: str) -> tuple[str, str] | None:
     for name, url in list_repos().items():
         sources, err = fetch_index_safe(url)
         if sources is None:
-            log.warning("índice do repo '%s' indisponível: %s", name, err)
+            log.warning("repo '%s' index unreachable: %s", name, err)
             continue
         if any(s.get("id") == source_id for s in sources):
             return name, url

@@ -1,4 +1,4 @@
-"""Configuração do wotoha via variáveis de ambiente (com suporte a .env simples)."""
+"""wotoha configuration via environment variables (with simple .env support)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ _load_dotenv()
 
 
 class Config:
-    """Configuração global lida do ambiente."""
+    """Global configuration read from the environment."""
 
     def __init__(self) -> None:
         self.server_url: str = os.environ.get("MANGA_DL_URL", "http://localhost:4567").rstrip("/")
@@ -47,11 +47,11 @@ class Config:
         # rede (conceitos portados do mangadex-downloader)
         self.proxy: str | None = os.environ.get("WOTOHA_PROXY") or None
         self.timeout: float = float(os.environ.get("WOTOHA_TIMEOUT", "30"))
-        # rate limit: calls por seconds; 0 desativa (padrão). Ative via CLI
+        # rate limit: calls per seconds; 0 disables (default). Enable via CLI
         # --delay-requests N (1 request a cada N segundos) ou env.
         self.rate_limit_calls: int = int(os.environ.get("WOTOHA_RATE_CALLS", "0"))
         self.rate_limit_seconds: float = float(os.environ.get("WOTOHA_RATE_SECONDS", "2.5"))
-        # idiomas p/ sources que filtram o catálogo (ex.: MangaPlus)
+        # languages for sources that filter the catalog (e.g. MangaPlus)
         self.languages: str = os.environ.get("WOTOHA_LANGUAGES", "eng")
 
 

@@ -1,4 +1,4 @@
-"""Catálogo de sources Aidoku: API unificada sobre os runtimes WASM bootados."""
+"""Aidoku sources catalog: unified API over the booted WASM runtimes."""
 
 from __future__ import annotations
 
@@ -27,13 +27,13 @@ def split_composite_id(composite: str) -> tuple[str, str]:
     m = COMPOSITE_RE.match(composite)
     if not m:
         raise ValueError(
-            f"id inválido: {composite!r} (esperado sourceId::mangaKey de uma busca)"
+            f"invalid id: {composite!r} (expected sourceId::mangaKey from a search)",
         )
     return m.group(1), m.group(2)
 
 
 class AidokuCatalog:
-    """Boota runtimes sob demanda e expõe search/manga/chapters/pages."""
+    """Boots runtimes on demand and exposes search/manga/chapters/pages."""
 
     def __init__(self) -> None:
         self._runtimes: dict[str, AidokuRuntime] = {}
@@ -44,14 +44,14 @@ class AidokuCatalog:
         aix = sources_dir() / f"{source_id}.aix"
         if not aix.is_file():
             raise FileNotFoundError(
-                f"source '{source_id}' não instalado; rode: wotoha sources install {source_id}"
+                f"source '{source_id}' not installed; run: wotoha sources install {source_id}"
             )
         rt = AidokuRuntime(aix)
         self._runtimes[source_id] = rt
         return rt
 
     # ------------------------------------------------------------------ #
-    # operações
+    # operations
     # ------------------------------------------------------------------ #
 
     def search(self, source_id: str, query: str, page: int = 1) -> dict[str, Any]:
@@ -79,11 +79,11 @@ class AidokuCatalog:
     def chapter_pages(self, composite_id: str, chapter_key: str) -> list[str]:
         source_id, key = split_composite_id(composite_id)
         rt = self.runtime_for(source_id)
-        # busca os metadados completos do manga (com capítulos)
+        # fetch the full manga metadata (with chapters)
         full = rt.get_manga_update(models.Manga(key=key, title=""))
         chapter = next((c for c in full.chapters or [] if c.key == chapter_key), None)
         if chapter is None:
-            raise ValueError(f"capítulo '{chapter_key}' não encontrado")
+            raise ValueError(f"chapter '{chapter_key}' not found")
         pages = rt.get_page_list(full, chapter)
         urls = [p.image_url() for p in pages]
         return [u for u in urls if u]

@@ -1,10 +1,10 @@
-"""Formatos de saída do wotoha: raw, epub, cbz, cb7 e pdf.
+"""wotoha output formats: raw, epub, cbz, cb7 and pdf.
 
-Design portado do mangadex-downloader
+Design ported from mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/format/):
-- ComicInfoPlugin (metadados ComicRack dentro do arquivo)
-- VolumeEpub/Cbz (empacotamento por volume)
-- SingleEpub/Cbz (todos os capítulos num arquivo só)
+- ComicInfoPlugin (ComicRack metadata inside the file)
+- VolumeEpub/Cbz (per-volume packaging)
+- SingleEpub/Cbz (all chapters in a single file)
 """
 
 from __future__ import annotations
@@ -39,12 +39,12 @@ def _mime(img: Path) -> str:
 
 
 def image_files(images_dir: Path) -> list[Path]:
-    """Lista imagens do diretório, ignorando metadados (ex.: .complete)."""
+    """List images in the directory, ignoring metadata (e.g. .complete)."""
     return sorted(p for p in images_dir.iterdir() if p.suffix.lower() in MIME_BY_EXT)
 
 
 # --------------------------------------------------------------------------- #
-# helpers de capítulo/número
+# chapter/number helpers
 # --------------------------------------------------------------------------- #
 
 
@@ -98,15 +98,15 @@ def _volume_folder_name(chapter) -> str:
     vol = _volume_number(chapter)
     if vol is not None:
         return f"Volume {vol:g}"
-    # fontes sem dado de volume: agrupa tudo num único grupo "No Volume"
-    # (mesmo comportamento do VolumePlugin do mangadex-downloader)
+    # sources without volume data: group everything into a single "No Volume" group
+    # (same behavior as mangadex-downloader's VolumePlugin)
     return "No Volume"
 
 
 class _Staging:
-    """Área temporária para acumular imagens entre capítulos (volume/single).
+    """Temporary area to accumulate images across chapters (volume/single).
 
-    Necessária porque o CLI apaga o workdir de cada capítulo após empacotar.
+    Needed because the CLI deletes each chapter's workdir after packing it.
     """
 
     def __init__(self, base_dir: Path, key: str) -> None:
@@ -134,23 +134,23 @@ def _cleanup_staging(base_dir: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# estratégia base
+# base strategy
 # --------------------------------------------------------------------------- #
 
 
 class OutputFormat(ABC):
-    """Estratégia de saída: como empacotar os capítulos baixados."""
+    """Output strategy: how to pack the downloaded chapters."""
 
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
-        self.one_file = False  # single mode (tudo num arquivo/pasta só)
+        self.one_file = False  # single mode (everything in one file/folder)
 
     @abstractmethod
     def _save_chapter(self, manga: dict[str, Any], chapter: Any, images_dir: Path) -> None:
-        """Recebe o dir com as imagens do capítulo e produz a saída final."""
+        """Takes the dir with the chapter images and produces the final output."""
 
     def _save_volume(self, manga, chapter, images_dir: Path) -> None:
-        raise MangaDlError(f"formato {type(self).__name__} não suporta modo volume")
+        raise MangaDlError(f"format {type(self).__name__} does not support volume mode")
 
     def save_chapter(self, manga, chapter, images_dir: Path) -> None:
         self._save_chapter(manga, chapter, images_dir)
@@ -159,7 +159,7 @@ class OutputFormat(ABC):
         self._save_volume(manga, chapter, images_dir)
 
     def finish(self, manga: dict[str, Any]) -> None:
-        """Chamado ao final de todos os capítulos."""
+        """Called after all chapters are processed."""
         _cleanup_staging(self.base_dir)
 
 
@@ -235,13 +235,13 @@ class RawFormat(OutputFormat):
     def _save_chapter(self, manga, chapter, images_dir: Path) -> None:
         final = self._manga_dir(manga) / safe_name(chapter.name)
         if final.exists():
-            log.info("Pasta já existe, pulando: %s", final.name)
+            log.info("Folder already exists, skipping: %s", final.name)
             return
         images_dir.rename(final)
         log.info("Salvo em: %s", final)
 
     def _save_chapter_single(self, manga, chapter, images_dir: Path) -> None:
-        # guarda por capítulo; o merge para pasta única acontece no finish()
+        # stores per chapter; the single-folder merge happens in finish()
         self._save_chapter(manga, chapter, images_dir)
 
     def _save_volume(self, manga, chapter, images_dir: Path) -> None:
@@ -254,7 +254,7 @@ class RawFormat(OutputFormat):
 
     def finish(self, manga: dict[str, Any]) -> None:
         if self.one_file:
-            # single: funde tudo em uma pasta única com numeração corrida
+            # single: merge everything into one folder with sequential numbering
             import shutil as _shutil
 
             manga_dir = self._manga_dir(manga)
@@ -270,8 +270,8 @@ class RawFormat(OutputFormat):
                     for img in image_files(sub):
                         offset += 1
                         img.rename(all_dir / f"{offset:04d}{img.suffix}")
-                    _shutil.rmtree(sub)  # remove também marcadores .complete
-                log.info("Pasta única: %s", all_dir)
+                    _shutil.rmtree(sub)  # also removes .complete markers
+                log.info("Single folder: %s", all_dir)
         super().finish(manga)
 
 
@@ -281,7 +281,7 @@ class RawFormat(OutputFormat):
 
 
 def _zip_image_count(out: Path) -> int:
-    """Quantidade de imagens já dentro do arquivo (p/ continuar numeração)."""
+    """Number of images already in the archive (to continue numbering)."""
     try:
         if out.suffix.lower() == ".cb7":
             import py7zr
@@ -304,7 +304,7 @@ def _open_archive(out: Path, *, append: bool = False):
             import py7zr
         except ImportError as e:
             raise MangaDlError(
-                "py7zr é necessário para cb7: pip install wotoha[cb7]"
+                "py7zr is required for cb7: pip install wotoha[cb7]"
             ) from e
         return py7zr.SevenZipFile(out, "a" if append else "w")
     return zipfile.ZipFile(out, "a" if append else "w", compression=zipfile.ZIP_STORED)
@@ -312,7 +312,7 @@ def _open_archive(out: Path, *, append: bool = False):
 
 def _archive_writestr(arc, arcname: str, text: str) -> None:
     if type(arc).__module__.startswith("py7zr"):
-        # py7zr tem a ordem dos argumentos invertida em relação ao zipfile
+        # py7zr has the argument order swapped compared to zipfile
         arc.writestr(text, arcname)
     else:
         arc.writestr(arcname, text)
@@ -331,7 +331,7 @@ class _ZipOutput(OutputFormat):
     def _save_chapter(self, manga, chapter, images_dir: Path) -> None:
         out = self._manga_dir(manga) / f"{safe_name(chapter.name)}{self.ext}"
         if out.is_file():
-            log.info("%s já existe, pulando: %s", self.ext.upper(), out.name)
+            log.info("%s already exists, skipping: %s", self.ext.upper(), out.name)
             return
         with _open_archive(out) as arc:
             for img in image_files(images_dir):
@@ -350,7 +350,7 @@ class _ZipOutput(OutputFormat):
                 arc.write(img, arcname=f"{offset + _page_number(img):04d}{img.suffix}")
             if not append:
                 _archive_writestr(arc, "ComicInfo.xml", _volume_comicinfo(manga, chapter))
-        log.info("%s atualizado: %s (+%d páginas)", self.ext.upper(), out.name, len(image_files(images_dir)))
+        log.info("%s updated: %s (+%d pages)", self.ext.upper(), out.name, len(image_files(images_dir)))
 
     # -- single mode --------------------------------------------------- #
 
@@ -361,7 +361,7 @@ class _ZipOutput(OutputFormat):
         with _open_archive(out, append=append) as arc:
             for img in image_files(images_dir):
                 arc.write(img, arcname=f"{offset + _page_number(img):04d}{img.suffix}")
-        log.info("%s: +%d páginas", self.ext.upper(), len(image_files(images_dir)))
+        log.info("%s: +%d pages", self.ext.upper(), len(image_files(images_dir)))
 
     def finish(self, manga: dict[str, Any]) -> None:
         if self.one_file:
@@ -411,7 +411,7 @@ def _page_xhtml(page_num: int, img_name: str) -> str:
 
 
 class EpubFormat(OutputFormat):
-    """Um .epub por capítulo/volume, compatível com e-readers.
+    """One .epub per chapter/volume, compatible with e-readers.
 
     Simplificado do EpubPlugin do mangadex-downloader
     (REF/mangadex-downloader/mangadex_downloader/format/epub.py).
@@ -442,7 +442,7 @@ class EpubFormat(OutputFormat):
         lang = manga.get("lang") or "pt"
 
         with zipfile.ZipFile(out, "w") as zf:
-            # mimetype deve ser o primeiro entry, sem compressão
+            # mimetype must be the first entry, uncompressed
             zf.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip")
             zf.writestr("META-INF/container.xml", EPUB_CONTAINER)
             for i, img in enumerate(images, start=1):
@@ -464,7 +464,7 @@ class EpubFormat(OutputFormat):
     def _save_chapter(self, manga, chapter, images_dir: Path) -> None:
         out = self._manga_dir(manga) / f"{safe_name(chapter.name)}.epub"
         if out.is_file():
-            log.info("EPUB já existe, pulando: %s", out.name)
+            log.info("EPUB already exists, skipping: %s", out.name)
             return
         self._write_epub(
             out,
@@ -516,7 +516,7 @@ class EpubFormat(OutputFormat):
                     images=images,
                     comicinfo=_manga_comicinfo(manga),
                 )
-                log.info("EPUB único criado: %s (%d páginas)", out.name, len(images))
+                log.info("Single EPUB created: %s (%d pages)", out.name, len(images))
         super().finish(manga)
 
     # -- OPF/NCX -------------------------------------------------------- #
@@ -581,7 +581,7 @@ class EpubFormat(OutputFormat):
 
 
 class PdfFormat(OutputFormat):
-    """Um .pdf por capítulo/volume (Pillow)."""
+    """One .pdf per chapter/volume (Pillow)."""
 
     def __init__(self, base_dir: Path) -> None:
         super().__init__(base_dir)
@@ -611,7 +611,7 @@ class PdfFormat(OutputFormat):
     def _save_chapter(self, manga, chapter, images_dir: Path) -> None:
         out = self._manga_dir(manga) / f"{safe_name(chapter.name)}.pdf"
         if out.is_file():
-            log.info("PDF já existe, pulando: %s", out.name)
+            log.info("PDF already exists, skipping: %s", out.name)
             return
         images = image_files(images_dir)
         if not images:
@@ -638,12 +638,12 @@ class PdfFormat(OutputFormat):
             images = self._single_staging.images()
             if images:
                 self._images_to_pdf(images, out)
-                log.info("PDF único criado: %s (%d páginas)", out.name, len(images))
+                log.info("Single PDF created: %s (%d pages)", out.name, len(images))
         super().finish(manga)
 
 
 # --------------------------------------------------------------------------- #
-# fábrica
+# factory
 # --------------------------------------------------------------------------- #
 
 FORMATS: dict[str, type[OutputFormat]] = {
@@ -656,20 +656,20 @@ FORMATS: dict[str, type[OutputFormat]] = {
 
 
 def get_format(name: str, base_dir: Path, mode: str = "chapter") -> OutputFormat:
-    """Cria a estratégia de saída.
+    """Creates the output strategy.
 
-    mode: "chapter" | "volume" | "single" (single = um arquivo só p/ o mangá).
+    mode: "chapter" | "volume" | "single" (single = one file for the whole manga).
     """
     try:
         cls = FORMATS[name.lower()]
     except KeyError:
         raise MangaDlError(
-            f"Formato desconhecido: '{name}'. Opções: {', '.join(FORMATS)}"
+            f"Unknown format: '{name}'. Options: {', '.join(FORMATS)}"
         ) from None
 
     fmt = cls(base_dir)
     if mode == "single":
-        # roteia save_chapter -> acumulação single
+        # routes save_chapter -> single accumulation
         fmt.save_chapter = fmt._save_chapter_single  # type: ignore[method-assign]
         fmt.one_file = True
     return fmt

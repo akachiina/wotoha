@@ -15,7 +15,7 @@ from .client import SuwayomiClient
 from .config import config
 from .errors import JavaNotFound, ServerJarNotFound
 
-# Release estável mais recente; o nome do asset .jar é versionado, então
+# Latest stable release; the .jar asset name is versioned, so
 # descobrimos via API do GitHub.
 GITHUB_LATEST_API = "https://api.github.com/repos/Suwayomi/Suwayomi-Server/releases/latest"
 
@@ -23,7 +23,7 @@ JAVA_CANDIDATES = ("java", "/usr/bin/java", "/usr/local/bin/java")
 
 
 def find_java() -> str:
-    """Encontra o binário java."""
+    """Finds the java binary."""
     for candidate in JAVA_CANDIDATES:
         try:
             subprocess.run(
@@ -35,7 +35,7 @@ def find_java() -> str:
         except (OSError, subprocess.CalledProcessError):
             continue
     raise JavaNotFound(
-        "Java não encontrado. Instale com: sudo apt install default-jre (ou equivalente)"
+        "Java not found. Install it with: sudo apt install default-jre (or equivalent)"
     )
 
 
@@ -53,7 +53,7 @@ def download_jar(dest: Path | None = None, force: bool = False) -> Path:
     """Baixa o jar do Suwayomi-Server mais recente (com barra de progresso)."""
     dest = dest or config.server_jar
     if dest.is_file() and not force:
-        print(f"Jar já existe: {dest}")
+        print(f"Jar already exists: {dest}")
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -79,14 +79,14 @@ def start(background: bool = True) -> subprocess.Popen:
     jar = config.server_jar
     if not jar.is_file():
         raise ServerJarNotFound(
-            f"Jar não encontrado em {jar}. Execute primeiro: wotoha server download"
+            f"Jar not found at {jar}. Run first: wotoha server download"
         )
     java = find_java()
 
     config.server_log.parent.mkdir(parents=True, exist_ok=True)
 
     if SuwayomiClient().is_up():
-        print("Servidor já está rodando.")
+        print("Server is already running.")
         return None  # type: ignore[return-value]
 
     log_file = open(config.server_log, "ab")  # noqa: SIM115 - vive pelo processo
@@ -102,30 +102,30 @@ def start(background: bool = True) -> subprocess.Popen:
     if background:
         # aguarda subir
         client = SuwayomiClient()
-        for _ in range(90):  # até 90s
+        for _ in range(90):  # up to 90s
             if client.is_up():
                 print(f"Servidor pronto em {config.server_url}")
                 return proc
             if proc.poll() is not None:
                 raise ServerJarNotFound(
-                    f"Processo morreu com código {proc.returncode}. Veja o log: {config.server_log}"
+                    f"Process died with code {proc.returncode}. See the log: {config.server_log}"
                 )
             time.sleep(1)
-        print("Aviso: servidor não respondeu em 90s; pode ainda estar iniciando.")
+        print("Warning: server did not respond within 90s; it may still be starting.")
     return proc
 
 
 def stop() -> None:
     """Para o servidor (via pid file)."""
     if not config.server_pid.is_file():
-        print("Nenhum pid file; servidor não foi iniciado pelo wotoha.")
+        print("No pid file; the server was not started by wotoha.")
         return
     pid = int(config.server_pid.read_text().strip())
     try:
         os.killpg(os.getpgid(pid), signal.SIGTERM)
         print(f"SIGTERM enviado para {pid}")
     except ProcessLookupError:
-        print(f"Processo {pid} não existe mais.")
+        print(f"Process {pid} no longer exists.")
     config.server_pid.unlink(missing_ok=True)
 
 
@@ -140,11 +140,11 @@ def status() -> bool:
 
 
 def ensure_running() -> None:
-    """Garante que o servidor está no ar, iniciando se necessário."""
+    """Ensures the server is up, starting it if needed."""
     if SuwayomiClient().is_up():
         return
-    print("Servidor não está no ar; iniciando...")
+    print("Server is not up; starting...")
     start(background=True)
 
 
-atexit.register(lambda: None)  # placeholder; stop é manual
+atexit.register(lambda: None)  # placeholder; stop is manual

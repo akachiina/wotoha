@@ -1,4 +1,4 @@
-"""Exceções do manga-dl."""
+"""manga-dl exceptions."""
 
 from __future__ import annotations
 
@@ -8,28 +8,28 @@ class MangaDlError(Exception):
 
 
 class ServerNotRunning(MangaDlError):
-    """O Suwayomi-Server não está acessível na URL configurada."""
+    """The Suwayomi-Server is not reachable at the configured URL."""
 
 
 class ServerJarNotFound(MangaDlError):
-    """O jar do Suwayomi-Server não foi encontrado."""
+    """The Suwayomi-Server jar was not found."""
 
 
 class SourceNotFound(MangaDlError):
-    """Source não encontrado no servidor."""
+    """Source not found on the server."""
 
 
 class MangaNotFound(MangaDlError):
-    """Mangá não encontrado."""
+    """Manga not found."""
 
 
 class ChapterNotFound(MangaDlError):
-    """Capítulo não encontrado."""
+    """Chapter not found."""
 
 
 class JavaNotFound(MangaDlError):
-    """Java não encontrado no sistema (necessário para o Suwayomi-Server)."""
+    """Java not found on the system (required by Suwayomi-Server)."""
 
 
 class DownloadFailed(MangaDlError):
-    """Falha ao baixar uma página/capítulo."""
+    """Failed to download a page/chapter."""
