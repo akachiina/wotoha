@@ -496,6 +496,14 @@ def _download_aidoku(args) -> None:
         if total > 1:
             console.print(f"[bold][{mi}/{total}][/] {details['title']}")
         chapters = dl.list_chapters(composite_id, no_oneshot=args.no_oneshot)
+        if mode == "volume" and chapters and all(
+            c.volume_number is None for c in chapters
+        ):
+            console.print(
+                "[yellow]Warning: this source provides no volume information; "
+                "volume mode packs every chapter into 'No Volume'. "
+                "Consider --mode chapter.[/yellow]"
+            )
         selected = dl.select_chapters(
             chapters,
             args.chapters,
