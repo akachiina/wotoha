@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import signal
 from pathlib import Path
 
 
 def _load_dotenv(path: str = ".env") -> None:
-    """Carrega um arquivo .env simples (KEY=VALUE) se existir."""
+    """Loads a simple .env file (KEY=VALUE) if one exists."""
     p = Path(path)
     if not p.is_file():
         return
@@ -44,11 +45,11 @@ class Config:
         self.sources_dir: str = os.environ.get(
             "WOTOHA_SOURCES_DIR", "~/.wotoha/sources"
         )
-        # rede (conceitos portados do mangadex-downloader)
+        # network (concepts ported from mangadex-downloader)
         self.proxy: str | None = os.environ.get("WOTOHA_PROXY") or None
         self.timeout: float = float(os.environ.get("WOTOHA_TIMEOUT", "30"))
         # rate limit: calls per seconds; 0 disables (default). Enable via CLI
-        # --delay-requests N (1 request a cada N segundos) ou env.
+        # --delay-requests N (1 request every N seconds) or env.
         self.rate_limit_calls: int = int(os.environ.get("WOTOHA_RATE_CALLS", "0"))
         self.rate_limit_seconds: float = float(os.environ.get("WOTOHA_RATE_SECONDS", "2.5"))
         # languages for sources that filter the catalog (e.g. MangaPlus)
@@ -56,3 +57,15 @@ class Config:
 
 
 config = Config()
+
+
+def block_sigint() -> None:
+    """Blocks SIGINT on the calling thread.
+
+    Used as a ThreadPoolExecutor initializer: worker threads must never
+    receive Ctrl+C — the main thread handles it. (A signal interrupting
+    WASM execution makes wasmtime panic with SIGABRT/SIGSEGV.)"""
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    except (AttributeError, OSError, ValueError):
+        pass

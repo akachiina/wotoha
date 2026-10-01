@@ -6,7 +6,7 @@ Single-package Python CLI (`wotoha/`), entrypoint `wotoha.cli:main` (console scr
 
 ## Setup
 
-- `pip install -e .` — core deps: `wasmtime`, `quickjs`, `beautifulsoup4`, `lxml`, `requests`, `rich`, `Pillow`.
+- `pip install -e .` — core deps: `wasmtime`, `beautifulsoup4`, `lxml`, `requests`, `rich`, `Pillow`.
 - Optional extras: `pip install wotoha[cb7]` (needs `py7zr` for `--format cb7`); `pip install wotoha[dev]` (pytest+ruff, but no tests or ruff config exist yet).
 - SOCKS proxy (`--proxy socks5://...`) needs `pip install requests[socks]` — not declared in pyproject.
 - PDF output uses Pillow only (no reportlab call in code despite the `pdf` extra).
@@ -15,6 +15,9 @@ Single-package Python CLI (`wotoha/`), entrypoint `wotoha.cli:main` (console scr
 
 - Default engine is **aidoku** (WASM, no Java): `aidoku_runtime.py` (1300+-line wasmtime host implementing Aidoku next-SDK 0.7 **and 0.8** ABI) + `postcard.py` + `models.py` codecs → `aidoku_catalog.py` (search/manga/chapters/pages facade) → `native_downloader.py` → `formats.py` → `comicinfo.py`.
 - SDK 0.8 compatibility notes: `net::set_timeout` returns i32; `env::abort` (Rust panic path) and `env::sleep` (capped at 10s) are registered; `defaults.set` must NOT call `free_result` on the source-passed buffer (arguments belong to the source — freeing caused memory traps).
+- **wasmtime Store is NOT thread-safe.** Concurrent WASM calls on the shared runtime store (e.g. parallel `process_page_image` in download workers) corrupt the trap stack and crash the whole process (SIGSEGV/SIGABRT, "assertion failed: core::ptr::eq(head, self)" in traphandlers/stackwalk). Every WASM entry in `aidoku_runtime.py` must hold `self._wasm_lock` — new export calls included.
+- **Signals and WASM never mix**: a `KeyboardInterrupt` raised inside a WASM/host frame makes wasmtime's unwinder panic too. Worker threads block SIGINT (`config.block_sigint` as the ThreadPoolExecutor initializer); the main thread defers it around each WASM call (`_sigint_deferred`) so KI is delivered at a Python bytecode boundary. Ctrl+C UX: download loop catches KI → "Interrupted — partial files kept. Re-run the same command to resume." → exit 130.
+- Page downloads treat HTTP 4xx as permanent (no retry/backoff); all-pages-failed raises `MangaDlError` per chapter, partial failures warn and keep going.
 - MangaPlus protobuf normalization: `_normalize_mangaplus_directory` in `aidoku_runtime.py` rewrites `title_list/all_v3` responses to keep only the 1st language variant per entry (the source's prost model merges repeated singular `title` fields and drops EN titles otherwise).
 - Sources come from **named repos** (`~/.wotoha/repos.json`, built-in `aidoku`): `aidoku_store.py` has `aggregate_indexes`/`find_source` (search/install across all repos) and `record_source_repo`/`repo_of` (provenance in `~/.wotoha/source_repos.json`, shown as the Repo column in tables). CLI: `wotoha sources repo add|list|remove`, `--index <name|url>` accepted by `sources` itself and its subcommands (parent uses `default=None`, subparser parent uses `SUPPRESS`).
 - Legacy engine **suwayomi** (`client.py`, `downloader.py`, `server_manager.py`, needs JVM + `wotoha server download && wotoha server start`): only for `--engine suwayomi` paths. IDs differ — aidoku uses composite `sourceId::key`, suwayomi uses numeric ID.
@@ -29,7 +32,7 @@ Single-package Python CLI (`wotoha/`), entrypoint `wotoha.cli:main` (console scr
 - `formats.py:get_format(name, base_dir, mode)` monkey-patches `save_chapter` to `_save_chapter_single` when `mode == "single"`; `RawFormat` renames (not copies) the chapter workdir, other formats use `<download_dir>/.cache` + `.wotoha-staging` temp dirs. Skip-if-exists: chapter/volume/single outputs are skipped when the target file/dir already exists — delete output to force re-download.
 - `cb7` raises `MangaDlError` without `py7zr`; `EpubFormat`/`PdfFormat` accumulate volume/single via `_Staging` and finalize in `finish()` — callers must always call `fmt.finish(manga_stub)`.
 - Chapter selection strings (`-c`, `--pages`, `--start/end-chapter`) parse in `downloader.py:parse_page_range` / `select_chapters` — reuse, don't reinvent.
-- Error handling in `cli.py:main`: catch `MangaDlError`, `requests.HTTPError`, `KeyboardInterrupt` (exit 130); log with `logging.getLogger("wotoha")`, `-v` switches to DEBUG.
+- Error handling in `cli.py:main`: catch `MangaDlError`, `requests.HTTPError`, `requests.RequestException`, `FileNotFoundError`, `KeyboardInterrupt` (exit 130); per-chapter failures are caught in `_download_aidoku` (`MangaDlError`/`ValueError`/`RequestException`) so one bad chapter doesn't kill the run; log with `logging.getLogger("wotoha")`, `-v` switches to DEBUG.
 
 ## Workflow
 

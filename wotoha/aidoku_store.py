@@ -223,7 +223,7 @@ def fetch_index_safe(index_url: str) -> tuple[list[dict[str, Any]] | None, str |
 
 
 def aggregate_indexes() -> tuple[dict[str, list[tuple[str, dict[str, Any]]]], list[str]]:
-    """Agrega todos os repos cadastrados.
+    """Aggregates every registered repo.
 
     Returns ({source_id: [(repo_name, entry), ...]}, [unreachable repos]).
     """
@@ -243,7 +243,7 @@ def aggregate_indexes() -> tuple[dict[str, list[tuple[str, dict[str, Any]]]], li
 
 
 def find_source(source_id: str) -> tuple[str, str] | None:
-    """Procura o source em todos os repos; retorna (repo_nome, index_url)."""
+    """Looks the source up in every repo; returns (repo_name, index_url)."""
     for name, url in list_repos().items():
         sources, err = fetch_index_safe(url)
         if sources is None:

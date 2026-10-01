@@ -532,19 +532,33 @@ def _download_aidoku(args) -> None:
             BarColumn(), TaskProgressColumn(), TimeElapsedColumn(), console=console,
         ) as progress:
             task = progress.add_task("Downloading...", total=len(order))
-            for chapter in order:
-                progress.update(task, description=f"[cyan]{safe_name(chapter.name)[:40]}")
-                workdir = base_tmp / safe_name(f"{composite_id}-{chapter.key}")
-                if needs_files:
-                    workdir.mkdir(parents=True, exist_ok=True)
-                dl.download_chapter(composite_id, chapter, workdir, pages_spec=args.pages)
-                if mode == "volume":
-                    fmt.save_volume(manga_stub, chapter, workdir)
-                else:
-                    fmt.save_chapter(manga_stub, chapter, workdir)
-                if needs_files:
-                    shutil.rmtree(workdir, ignore_errors=True)
-                progress.advance(task)
+            try:
+                for chapter in order:
+                    progress.update(task, description=f"[cyan]{safe_name(chapter.name)[:40]}")
+                    workdir = base_tmp / safe_name(f"{composite_id}-{chapter.key}")
+                    if needs_files:
+                        workdir.mkdir(parents=True, exist_ok=True)
+                    try:
+                        dl.download_chapter(composite_id, chapter, workdir, pages_spec=args.pages)
+                    except (MangaDlError, ValueError, requests.exceptions.RequestException) as e:
+                        err_console.print(f"[red]✗ {chapter.name}:[/red] {e}")
+                        progress.advance(task)
+                        continue
+                    if mode == "volume":
+                        fmt.save_volume(manga_stub, chapter, workdir)
+                    else:
+                        fmt.save_chapter(manga_stub, chapter, workdir)
+                    if needs_files:
+                        shutil.rmtree(workdir, ignore_errors=True)
+                    progress.advance(task)
+            except KeyboardInterrupt:
+                # let the progress bar render one last time; the ThreadPoolExecutor
+                # atexit hook would otherwise spew join noise on shutdown
+                err_console.print(
+                    "\n[yellow]Interrupted — partial files kept. "
+                    "Re-run the same command to resume.[/yellow]"
+                )
+                raise SystemExit(130) from None
 
         fmt.finish(manga_stub)
     console.print("[green]Done.[/green] Output at:", config.download_dir.resolve())
@@ -647,15 +661,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     # server / extensions (legacy suwayomi)
     p_server = sub.add_parser("server", help="[suwayomi] Manage the Suwayomi-Server")
-    p_server.add_argument("action", choices=["download", "start", "stop", "status"])
-    p_server.add_argument("--force", action="store_true")
+    p_server.add_argument(
+        "action", choices=["download", "start", "stop", "status"],
+        help="download the jar, start/stop the server, or show its status",
+    )
+    p_server.add_argument("--force", action="store_true", help="re-download even if the jar exists")
     p_server.set_defaults(func=cmd_server)
 
     p_ext = sub.add_parser("extensions", aliases=["ext"], help="[suwayomi] Mihon extensions")
     ext_sub = p_ext.add_subparsers(dest="ext_action", required=True)
-    ext_sub.add_parser("list")
-    p_i = ext_sub.add_parser("install"); p_i.add_argument("pkg", nargs="+")
-    p_u = ext_sub.add_parser("uninstall"); p_u.add_argument("pkg", nargs="+")
+    ext_sub.add_parser("list", help="List available/installed extensions")
+    p_i = ext_sub.add_parser("install", help="Install extension(s) by package name")
+    p_i.add_argument("pkg", nargs="+")
+    p_u = ext_sub.add_parser("uninstall", help="Remove extension(s)")
+    p_u.add_argument("pkg", nargs="+")
     p_ext.set_defaults(func=cmd_extensions)
 
     # sources
@@ -684,25 +703,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_ra.add_argument("name", help="short name (e.g. yomu)")
     p_ra.add_argument("url", help="URL of the index.min.json")
     p_rr = repo_sub.add_parser("remove", help="Remove a repository")
-    p_rr.add_argument("name")
+    p_rr.add_argument("name", help="repository name")
     p_src.add_argument(
         "--index", default=None, metavar="NAME|URL",
         help="alternative Aidoku source index (third-party repos)",
     )
-    p_src.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
+    p_src.add_argument(
+        "--engine", default="aidoku", choices=["aidoku", "suwayomi"],
+        help="backend engine (default: aidoku)",
+    )
     p_src.set_defaults(func=cmd_sources)
 
     # search
     p_search = sub.add_parser("search", help="Search manga")
     p_search.add_argument("query")
     p_search.add_argument("--source", help="source ID (default: all installed)")
-    p_search.add_argument("--page", type=int, default=1)
+    p_search.add_argument("--page", type=int, default=1, help="results page number (default: 1)")
     p_search.add_argument(
         "--language", "-l", default=None, metavar="LANG",
         help="language for the sources' chapter filter (e.g. en, pt-BR); "
-             "default: WOTOHA_LANGUAGES (current: %(default)s)",
+             "default: WOTOHA_LANGUAGES",
     )
-    p_search.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
+    p_search.add_argument(
+        "--engine", default="aidoku", choices=["aidoku", "suwayomi"],
+        help="backend engine (default: aidoku)",
+    )
     p_search.set_defaults(func=cmd_search)
 
     # info
@@ -712,7 +737,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--language", "-l", default=None, metavar="LANG",
         help="language for the sources' chapter filter (e.g. en, pt-BR)",
     )
-    p_info.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
+    p_info.add_argument(
+        "--engine", default="aidoku", choices=["aidoku", "suwayomi"],
+        help="backend engine (default: aidoku)",
+    )
     p_info.set_defaults(func=cmd_info)
 
     # download
@@ -728,9 +756,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="chapter",
         help="packaging: per chapter (default), per volume, or a single file",
     )
-    p_dl.add_argument("--chapters", "-c", default=None, help='"all", "latest", "1-10,15"')
-    p_dl.add_argument("--start-chapter", type=float, default=None)
-    p_dl.add_argument("--end-chapter", type=float, default=None)
+    p_dl.add_argument(
+        "--chapters", "-c", default=None,
+        help='chapters to download: "all" (default), "latest", or ranges like "1-10,15"',
+    )
+    p_dl.add_argument("--start-chapter", type=float, default=None, help="first chapter number (inclusive)")
+    p_dl.add_argument("--end-chapter", type=float, default=None, help="last chapter number (inclusive)")
     p_dl.add_argument(
         "--pages", default=None,
         help='page range: "2", "1-10", "3--" (last 3)',
@@ -748,15 +779,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--cover", action="store_true", help="download the manga cover")
     p_dl.add_argument("--batch-from-file", default=None, metavar="FILE",
                       help="file with one ID per line")
-    p_dl.add_argument("--workers", type=int, default=4)
-    p_dl.add_argument("--retries", type=int, default=3)
+    p_dl.add_argument(
+        "--workers", type=int, default=4,
+        help="parallel page downloads per chapter (default: %(default)s)",
+    )
+    p_dl.add_argument(
+        "--retries", type=int, default=3,
+        help="retry attempts per page (default: %(default)s)",
+    )
     p_dl.add_argument(
         "--delay-requests", type=float, default=None, metavar="SEC",
         help="minimum interval between requests (rate limit)",
     )
     p_dl.add_argument("--proxy", default=None, help="HTTP/SOCKS proxy (e.g. socks5://localhost:9050)")
-    p_dl.add_argument("-o", "--output", default=None)
-    p_dl.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
+    p_dl.add_argument(
+        "-o", "--output", default=None, metavar="DIR",
+        help="download directory (default: ./downloads or MANGA_DL_DIR)",
+    )
+    p_dl.add_argument(
+        "--engine", default="aidoku", choices=["aidoku", "suwayomi"],
+        help="backend engine (default: aidoku)",
+    )
     p_dl.set_defaults(func=cmd_download)
 
     # search gets --pick (downloads straight from results)
@@ -768,9 +811,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--format", "-f", choices=["raw", "epub", "cbz", "cb7", "pdf"],
         default=config.default_format,
     )
-    p_search.add_argument("--workers", type=int, default=4)
-    p_search.add_argument("--retries", type=int, default=3)
-    p_search.add_argument("-o", "--output", default=None)
+    p_search.add_argument("--workers", type=int, default=4, help="parallel page downloads (default: %(default)s)")
+    p_search.add_argument("--retries", type=int, default=3, help="retry attempts per page (default: %(default)s)")
+    p_search.add_argument("-o", "--output", default=None, metavar="DIR", help="download directory")
     p_search.set_defaults(func=cmd_search)
 
     return parser
@@ -797,8 +840,14 @@ def main(argv: list[str] | None = None) -> None:
         status = e.response.status_code if e.response is not None else "?"
         err_console.print(f"[red]HTTP error {status}:[/red] {e}")
         sys.exit(1)
+    except requests.exceptions.RequestException as e:
+        err_console.print(f"[red]Network error:[/red] {e}")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
     except KeyboardInterrupt:
-        err_console.print("\nInterrupted.")
+        err_console.print("\n[yellow]Interrupted.[/yellow]")
         sys.exit(130)
 
 

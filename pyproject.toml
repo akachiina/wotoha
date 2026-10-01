@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wotoha"
 version = "0.2.0"
-description = "CLI de manga downloader com extensões (Aidoku WASM, LNReader/Mangayomi JS) — sem Java"
+description = "Manga downloader CLI with Aidoku (WASM) extensions — lightweight, no Java"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -15,7 +15,6 @@ dependencies = [
     "rich>=13.0",
     "Pillow>=10.0",
     "wasmtime>=25.0",
-    "quickjs>=1.19",
     "beautifulsoup4>=4.12",
     "lxml>=5.0",
 ]

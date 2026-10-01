@@ -225,7 +225,7 @@ def _date_parts(ts) -> dict:
 
 
 class RawFormat(OutputFormat):
-    """Imagens soltas em pastas, estilo mangadex-downloader."""
+    """Loose images in folders, mangadex-downloader style."""
 
     def _manga_dir(self, manga) -> Path:
         d = self.base_dir / safe_name(manga["title"])
@@ -238,7 +238,7 @@ class RawFormat(OutputFormat):
             log.info("Folder already exists, skipping: %s", final.name)
             return
         images_dir.rename(final)
-        log.info("Salvo em: %s", final)
+        log.info("Saved to: %s", final)
 
     def _save_chapter_single(self, manga, chapter, images_dir: Path) -> None:
         # stores per chapter; the single-folder merge happens in finish()

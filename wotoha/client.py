@@ -42,7 +42,7 @@ class SuwayomiClient:
         except requests.exceptions.ConnectionError as e:
             raise ServerNotRunning(
                 f"Could not connect to {self.base_url}. "
-                "Inicie o servidor com: wotoha server start"
+                "Start the server first: wotoha server start"
             ) from e
         resp.raise_for_status()
         return resp
@@ -130,7 +130,8 @@ class SuwayomiClient:
         """The manga's chapter list.
 
         Endpoint: GET /manga/{mangaId}/chapters
-        (o /full nem sempre inclui chapters, por isso usamos o endpoint dedicado)
+        (the /full endpoint does not always include chapters, hence the
+        dedicated one)
         """
         return self._get(f"/manga/{manga_id}/chapters").json()
 

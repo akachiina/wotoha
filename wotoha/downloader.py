@@ -1,6 +1,6 @@
 """Chapter/page download pipeline via Suwayomi-Server.
 
-Conceitos de progresso/retries inspirados no mangadex-downloader
+Progress/retry concepts inspired by mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/downloader.py).
 """
 
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .client import SuwayomiClient
+from .config import block_sigint
 from .errors import ChapterNotFound, DownloadFailed, MangaDlError
 
 log = logging.getLogger(__name__)
@@ -23,9 +25,9 @@ SAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 def safe_name(name: str, maxlen: int = 120) -> str:
-    """Sanitiza um nome para uso em filesystem."""
+    """Sanitizes a name for filesystem use."""
     cleaned = SAFE_NAME_RE.sub("_", name).strip(" .")
-    return (cleaned or "sem-nome")[:maxlen]
+    return (cleaned or "unnamed")[:maxlen]
 
 
 def parse_page_range(spec: str | None, total: int) -> list[int]:
@@ -59,7 +61,7 @@ def parse_page_range(spec: str | None, total: int) -> list[int]:
             raise ChapterNotFound(f"page {start} out of range (1-{total})")
         return list(range(start - 1, total))
 
-    m = re.fullmatch(r"(\d+)-(\d+)", s)  # faixa
+    m = re.fullmatch(r"(\d+)-(\d+)", s)  # range
     if m:
         start, end = int(m.group(1)), int(m.group(2))
         if start < 1 or end < start:
@@ -109,7 +111,7 @@ class ChapterDownloader:
 
     def list_chapters(self, manga_id: int, no_oneshot: bool = False) -> list[ChapterRef]:
         """Chapter list (ordered from newest to oldest,
-        como o Suwayomi retorna)."""
+        as Suwayomi returns them)."""
         chapters: list[dict[str, Any]] = self.client.get_chapters(manga_id)
         refs = [
             ChapterRef(
@@ -135,7 +137,7 @@ class ChapterDownloader:
     ) -> list[ChapterRef]:
         """Selects chapters per the user specification.
 
-        - None ou "all": todos
+        - None or "all": all
         - "latest": only the most recent chapter
         - "1-10,15,20-23": ranges by **chapter number** (not index)
         - start_chapter/end_chapter: additional numeric cut
@@ -188,23 +190,41 @@ class ChapterDownloader:
 
     # ------------------------------------------------------------------ #
 
-    def _fetch_page(self, manga_id: int, chapter_index: int, page_index: int) -> bytes:
-        """Downloads a page with retries and exponential backoff."""
+    def _fetch_page(
+        self,
+        manga_id: int,
+        chapter_index: int,
+        page_index: int,
+        stop: threading.Event | None = None,
+    ) -> bytes:
+        """Downloads a page with retries and exponential backoff.
+
+        4xx statuses are permanent (don't waste time retrying); `stop`
+        makes the backoff sleep exit immediately on Ctrl+C."""
         last_err: Exception | None = None
         for attempt in range(1, self.retries + 1):
+            if stop is not None and stop.is_set():
+                break
             try:
                 data = self.client.get_page_image(manga_id, chapter_index, page_index)
                 if not data:
-                    raise DownloadFailed("resposta vazia")
+                    raise DownloadFailed("empty response")
                 return data
             except Exception as e:  # noqa: BLE001 - generic retry
                 last_err = e
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status is not None and 400 <= status < 500:
+                    break
+                if attempt >= self.retries:
+                    break
                 delay = min(2 ** attempt, 10)
                 log.warning(
                     "Page %d failed (attempt %d/%d): %s — retrying in %ds",
                     page_index, attempt, self.retries, e, delay,
                 )
-                time.sleep(delay)
+                # interruptible backoff: exits as soon as Ctrl+C is seen
+                if stop is not None and stop.wait(delay):
+                    break
         raise DownloadFailed(
             f"Page {page_index} failed after {self.retries} attempts"
         ) from last_err
@@ -218,8 +238,8 @@ class ChapterDownloader:
     ) -> Path:
         """Downloads a chapter's pages to `dest`.
 
-        Fluxo do Suwayomi: a primeira chamada a /page/0 faz o servidor buscar a
-        the page list on the site (PageTable populate) and update the chapter's pageCount
+        Suwayomi flow: the first call to /page/0 makes the server fetch the
+        page list on the site (PageTable populate) and update the chapter's pageCount.
         For that reason we "warm up" with page 0 before parallelizing.
         """
         dest.mkdir(parents=True, exist_ok=True)
@@ -228,7 +248,7 @@ class ChapterDownloader:
             log.info("Chapter already downloaded, skipping: %s", dest.name)
             return dest
 
-        log.info("Baixando '%s'", chapter.name)
+        log.info("Downloading '%s'", chapter.name)
 
         # 1) GET /chapter/{index}: makes the server populate pageCount and the page list
         info = self.client.get_chapter(manga["id"], chapter.index)
@@ -246,18 +266,30 @@ class ChapterDownloader:
         if 0 not in indices:
             self._fetch_page(manga["id"], chapter.index, 0)
 
-        def fetch(i: int) -> tuple[int, bytes]:
-            return i, self._fetch_page(manga["id"], chapter.index, i)
+        stop = threading.Event()
 
-        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+        def fetch(i: int) -> tuple[int, bytes]:
+            return i, self._fetch_page(manga["id"], chapter.index, i, stop)
+
+        with ThreadPoolExecutor(
+            max_workers=self.workers, initializer=block_sigint
+        ) as pool:
             futures = {pool.submit(fetch, i): i for i in indices}
             done = 0
-            for fut in as_completed(futures):
-                page_index, data = fut.result()
-                ext = self._ext_from(data)
-                (dest / f"{page_index + 1:04d}{ext}").write_bytes(data)
-                done += 1
-                log.info("  [%d/%d] ok", done, len(indices))
+            try:
+                for fut in as_completed(futures):
+                    page_index, data = fut.result()
+                    ext = self._ext_from(data)
+                    (dest / f"{page_index + 1:04d}{ext}").write_bytes(data)
+                    done += 1
+                    log.info("  [%d/%d] ok", done, len(indices))
+            except KeyboardInterrupt:
+                # tell the workers to stop sleeping/retrying and drop queued
+                # pages, so the executor shuts down without hanging
+                stop.set()
+                for f in futures:
+                    f.cancel()
+                raise
 
         marker.write_text(str(len(indices)))
         return dest

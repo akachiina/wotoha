@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -11,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from .aidoku_catalog import AidokuCatalog
-from .config import config
+from .config import block_sigint, config
 from .downloader import parse_page_range, safe_name
-from .errors import ChapterNotFound
+from .errors import ChapterNotFound, MangaDlError
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class NativeChapter:
     scanlators: list[str] | None = None
 
     @property
-    def id(self) -> int:  # compat com formatos
+    def id(self) -> int:  # compat with the output formats
         return self.index
 
     @property
@@ -66,7 +67,7 @@ class NativeDownloader:
         for i, c in enumerate(chapters):
             title = c.get("title")
             num = c.get("chapterNumber")
-            name = f"Chapter {num:g}" if num is not None else (title or f"Cap {i + 1}")
+            name = f"Chapter {num:g}" if num is not None else (title or f"Chapter {i + 1}")
             if title and num is not None and title != name:
                 name = f"{name} - {title}"
             ch = NativeChapter(
@@ -181,29 +182,71 @@ class NativeDownloader:
         def fetch(i: int) -> tuple[int, bytes]:
             last_err: Exception | None = None
             for attempt in range(1, self.retries + 1):
+                if stop.is_set():
+                    break
                 try:
-                    return i, self.catalog.fetch_image(source_id, pages[i])
+                    return i, self.catalog.fetch_page_image(source_id, pages[i])
                 except Exception as e:  # noqa: BLE001
                     last_err = e
+                    # 4xx are permanent (missing image, forbidden hotlink):
+                    # retrying with backoff only wastes time
+                    status = getattr(getattr(e, "response", None), "status_code", None)
+                    if status is not None and 400 <= status < 500:
+                        break
+                    if attempt >= self.retries or stop.is_set():
+                        break
                     delay = min(2**attempt, 10)
                     log.warning(
                         "page %d failed (%d/%d): %s — retrying in %ds",
                         i + 1, attempt, self.retries, e, delay,
                     )
-                    time.sleep(delay)
-            raise RuntimeError(f"page {i + 1} failed after {self.retries} attempts") from last_err
+                    # interruptible backoff: exits as soon as Ctrl+C is seen
+                    if stop.wait(delay):
+                        break
+            raise RuntimeError(f"page {i + 1} failed: {last_err}") from last_err
 
         from .downloader import ChapterDownloader as _CD
 
-        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+        stop = threading.Event()
+
+        failed_pages: list[str] = []
+        with ThreadPoolExecutor(
+            max_workers=self.workers, initializer=block_sigint
+        ) as pool:
             futures = {pool.submit(fetch, i): i for i in indices}
             done = 0
-            for fut in as_completed(futures):
-                i, data = fut.result()
-                ext = _CD._ext_from(data)
-                (dest / f"{i + 1:04d}{ext}").write_bytes(data)
-                done += 1
-                log.info("  [%d/%d] ok", done, len(indices))
+            try:
+                for fut in as_completed(futures):
+                    i = futures[fut]
+                    try:
+                        _, data = fut.result()
+                    except Exception as e:  # noqa: BLE001
+                        failed_pages.append(str(i + 1))
+                        log.error("page %d of '%s': %s", i + 1, chapter.name, e)
+                        continue
+                    ext = _CD._ext_from(data)
+                    (dest / f"{i + 1:04d}{ext}").write_bytes(data)
+                    done += 1
+                    log.info("  [%d/%d] ok", done, len(indices))
+            except KeyboardInterrupt:
+                # tell the workers to stop sleeping/retrying and drop queued
+                # pages, so the executor shuts down without hanging or spewing
+                # thread-join noise at exit
+                stop.set()
+                for f in futures:
+                    f.cancel()
+                raise
+
+        if failed_pages and len(failed_pages) == len(indices):
+            # nothing was saved: the chapter as a whole failed
+            raise MangaDlError(
+                f"all {len(indices)} page(s) of '{chapter.name}' failed"
+            )
+        if failed_pages:
+            log.warning(
+                "chapter '%s' saved with missing pages: %s",
+                chapter.name, ", ".join(failed_pages),
+            )
 
         marker.write_text(str(len(indices)))
         return dest
@@ -217,10 +260,10 @@ class NativeDownloader:
         cover = details.get("cover")
         if not cover:
             return None
-        data = self.catalog.runtime_for(source_id).fetch_image(cover)
+        data = self.catalog.fetch_page_image(source_id, cover)
         ext = _CD._ext_from(data)
         dest_dir.mkdir(parents=True, exist_ok=True)
         out = dest_dir / f"cover{ext}"
         out.write_bytes(data)
-        log.info("capa salva: %s", out)
+        log.info("cover saved: %s", out)
         return out

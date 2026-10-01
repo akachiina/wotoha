@@ -91,6 +91,13 @@ class AidokuCatalog:
     def fetch_image(self, source_id: str, url: str) -> bytes:
         return self.runtime_for(source_id).fetch_image(url)
 
+    def fetch_page_image(
+        self, source_id: str, url: str, context: dict[str, str] | None = None
+    ) -> bytes:
+        """Fetches a page/cover image through the source's own request builder
+        (headers like Referer) and image processor (decryption)."""
+        return self.runtime_for(source_id).fetch_image_via_source(url, context)
+
     # ------------------------------------------------------------------ #
 
     @staticmethod

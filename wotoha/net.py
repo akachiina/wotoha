@@ -1,6 +1,6 @@
-"""Camada HTTP compartilhada: proxy, timeout e rate limiting.
+"""Shared HTTP layer: proxy, timeout and rate limiting.
 
-Portado dos conceitos de rede do mangadex-downloader
+Concepts ported from mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/network.py).
 """
 
@@ -68,14 +68,14 @@ def apply_network_options(
     proxy: str | None = None,
     timeout: float | None = None,
 ) -> requests.Session:
-    """Aplica proxy/timeout de config em uma Session (in place)."""
+    """Applies config proxy/timeout to a Session (in place)."""
     proxy = proxy or config.proxy
     if proxy:
         scheme = urlparse(proxy).scheme or "http"
         if scheme not in ("http", "https", "socks4", "socks5", "socks5h"):
             raise ValueError(
                 f"invalid proxy: '{proxy}' (use http(s):// or socks5://; "
-                "socks requer pip install requests[socks])"
+                "socks requires pip install requests[socks])"
             )
         session.proxies = {"http": proxy, "https": proxy}
         log.info("proxy: %s", proxy)
@@ -92,8 +92,8 @@ def request_with_limit(
     timeout: float | None = None,
     **kwargs,
 ) -> requests.Response:
-    """request() com rate limiting respeitado (default 2.5s entre requests,
-    igual ao default do mangadex-downloader)."""
+    """request() honoring the rate limiter (default 2.5s between requests,
+    same as the mangadex-downloader default)."""
     limiter = get_rate_limiter()
     if limiter:
         limiter.wait()

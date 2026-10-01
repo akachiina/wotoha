@@ -1,4 +1,4 @@
-"""Gerenciamento do Suwayomi-Server (download do jar, start/stop/status)."""
+"""Suwayomi-Server management (jar download, start/stop/status)."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from .client import SuwayomiClient
 from .config import config
 from .errors import JavaNotFound, ServerJarNotFound
 
-# Latest stable release; the .jar asset name is versioned, so
-# descobrimos via API do GitHub.
+# Latest stable release; the .jar asset name is versioned, so we look it up
+# via the GitHub API.
 GITHUB_LATEST_API = "https://api.github.com/repos/Suwayomi/Suwayomi-Server/releases/latest"
 
 JAVA_CANDIDATES = ("java", "/usr/bin/java", "/usr/local/bin/java")
@@ -46,11 +46,11 @@ def _latest_jar_url() -> str:
         name: str = asset.get("name", "")
         if name.endswith(".jar"):
             return asset["browser_download_url"]
-    raise ServerJarNotFound("Nenhum asset .jar encontrado no release mais recente do Suwayomi")
+    raise ServerJarNotFound("No .jar asset found in the latest Suwayomi release")
 
 
 def download_jar(dest: Path | None = None, force: bool = False) -> Path:
-    """Baixa o jar do Suwayomi-Server mais recente (com barra de progresso)."""
+    """Downloads the latest Suwayomi-Server jar (with a progress bar)."""
     dest = dest or config.server_jar
     if dest.is_file() and not force:
         print(f"Jar already exists: {dest}")
@@ -58,7 +58,7 @@ def download_jar(dest: Path | None = None, force: bool = False) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     url = _latest_jar_url()
-    print(f"Baixando {url.split('/')[-1]} para {dest} ...")
+    print(f"Downloading {url.split('/')[-1]} to {dest} ...")
     with requests.get(url, stream=True, timeout=120) as resp:
         resp.raise_for_status()
         total = int(resp.headers.get("content-length") or 0)
@@ -75,7 +75,7 @@ def download_jar(dest: Path | None = None, force: bool = False) -> Path:
 
 
 def start(background: bool = True) -> subprocess.Popen:
-    """Inicia o Suwayomi-Server."""
+    """Starts the Suwayomi-Server."""
     jar = config.server_jar
     if not jar.is_file():
         raise ServerJarNotFound(
@@ -89,7 +89,7 @@ def start(background: bool = True) -> subprocess.Popen:
         print("Server is already running.")
         return None  # type: ignore[return-value]
 
-    log_file = open(config.server_log, "ab")  # noqa: SIM115 - vive pelo processo
+    log_file = open(config.server_log, "ab")  # noqa: SIM115 - lives for the process lifetime
     proc = subprocess.Popen(
         [java, "-jar", str(jar)],
         stdout=log_file,
@@ -97,14 +97,14 @@ def start(background: bool = True) -> subprocess.Popen:
         start_new_session=True,
     )
     config.server_pid.write_text(str(proc.pid))
-    print(f"Servidor iniciado (pid {proc.pid}). Log: {config.server_log}")
+    print(f"Server started (pid {proc.pid}). Log: {config.server_log}")
 
     if background:
-        # aguarda subir
+        # wait for it to come up
         client = SuwayomiClient()
         for _ in range(90):  # up to 90s
             if client.is_up():
-                print(f"Servidor pronto em {config.server_url}")
+                print(f"Server ready at {config.server_url}")
                 return proc
             if proc.poll() is not None:
                 raise ServerJarNotFound(
@@ -116,24 +116,24 @@ def start(background: bool = True) -> subprocess.Popen:
 
 
 def stop() -> None:
-    """Para o servidor (via pid file)."""
+    """Stops the server (via pid file)."""
     if not config.server_pid.is_file():
         print("No pid file; the server was not started by wotoha.")
         return
     pid = int(config.server_pid.read_text().strip())
     try:
         os.killpg(os.getpgid(pid), signal.SIGTERM)
-        print(f"SIGTERM enviado para {pid}")
+        print(f"SIGTERM sent to {pid}")
     except ProcessLookupError:
         print(f"Process {pid} no longer exists.")
     config.server_pid.unlink(missing_ok=True)
 
 
 def status() -> bool:
-    """Mostra o status do servidor. Retorna True se estiver no ar."""
+    """Shows the server status. Returns True when it is up."""
     client = SuwayomiClient()
     if client.is_up():
-        print(f"ONLINE em {config.server_url}")
+        print(f"ONLINE at {config.server_url}")
         return True
     print(f"OFFLINE ({config.server_url})")
     return False

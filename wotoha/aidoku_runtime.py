@@ -15,8 +15,11 @@ ABI summary (derived from rakuyomi + aidoku-rs):
 
 from __future__ import annotations
 
+import contextlib
 import io
 import logging
+import signal
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -38,6 +41,41 @@ DEFAULT_USER_AGENT = (
 # html error codes shared with the source side
 HTML_INVALID_DESCRIPTOR = -1
 HTML_NO_RESULT = -5
+
+
+_sigint_depth = 0
+
+
+@contextlib.contextmanager
+def _sigint_deferred():
+    """Defers SIGINT while a WASM call runs (main thread only).
+
+    Raising KeyboardInterrupt from inside a WASM/host frame makes wasmtime's
+    unwinder panic (SIGABRT/SIGSEGV), so the signal is held pending and
+    delivered at the next Python bytecode boundary instead. Worker threads
+    block SIGINT entirely (see config.block_sigint)."""
+    global _sigint_depth
+    if (
+        threading.current_thread() is not threading.main_thread()
+        or _sigint_depth > 0
+        or not hasattr(signal, "pthread_sigmask")
+    ):
+        yield
+        return
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    except (OSError, ValueError):
+        yield
+        return
+    _sigint_depth += 1
+    try:
+        yield
+    finally:
+        _sigint_depth -= 1
+        try:
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+        except (OSError, ValueError):
+            pass
 
 
 class AidokuSourceError(Exception):
@@ -124,13 +162,18 @@ class AidokuRuntime:
 
         self.linker = Linker(self.engine)
         self._register_imports()
-        self.instance: Instance = self.linker.instantiate(self.store, self.module)
-        self.exports = self.instance.exports(self.store)
-        self.memory: Memory = self.exports["memory"]
+        # wasmtime Store is not thread-safe: all WASM entries (including the
+        # host callbacks they trigger) must be serialized
+        self._wasm_lock = threading.Lock()
+        with self._wasm_lock:
+            self.instance: Instance = self.linker.instantiate(self.store, self.module)
+            self.exports = self.instance.exports(self.store)
+            self.memory: Memory = self.exports["memory"]
 
-        start = self.exports.get("start")
-        if isinstance(start, Func):
-            start(self.store)
+            start = self.exports.get("start")
+            if isinstance(start, Func):
+                with _sigint_deferred():
+                    start(self.store)
 
     def _export(self, name: str) -> Any:
         exp = self.exports.get(name)
@@ -151,8 +194,8 @@ class AidokuRuntime:
             raise AidokuSourceError(
                 f"memory read failed at {offset}+{length} (mem size {size})"
             )
-        # wasmtime-py retorna bytearray; normalizar para bytes (isinstance
-        # checks e bs4 quebram com bytearray)
+        # wasmtime-py returns a bytearray; normalize to bytes (isinstance
+        # checks and bs4 break with bytearray)
         if type(data) is not bytes:
             data = bytes(data)
         return data
@@ -195,13 +238,15 @@ class AidokuRuntime:
         try:
             free_fn = self.exports.get("free_result")
             if isinstance(free_fn, Func):
-                free_fn(self.store, ptr)
+                with self._wasm_lock, _sigint_deferred():
+                    free_fn(self.store, ptr)
         except Exception:  # noqa: BLE001
             log.debug("free_result failed for ptr=%s", ptr)
 
     def _call_ptr(self, func_name: str, args: tuple) -> bytes:
         fn = self._export(func_name)
-        ptr = fn(self.store, *args)
+        with self._wasm_lock, _sigint_deferred():
+            ptr = fn(self.store, *args)
         return self._read_result_raw(ptr)
 
     # ------------------------------------------------------------------ #
@@ -646,7 +691,7 @@ class AidokuRuntime:
                 )
                 return new_body
         except Exception as e:  # noqa: BLE001
-            log.debug("normalize mangaplus falhou: %s", e)
+            log.debug("mangaplus normalization failed: %s", e)
         return body
 
     def _h_net_data_len(self, handle: int) -> int:
@@ -764,9 +809,9 @@ class AidokuRuntime:
         nodes = el["node"].select(query)
         if self.TRACE:
             log.info("[html.select] doc=%s q=%r -> %d nodes", handle, query, len(nodes))
-        # mesmo com 0 matches, retorna o handle (igual ao rakuyomi): o template
-        # madara trata None como "Invalid chapter selector" e aborta antes de
-        # tentar o fallback AJAX; com lista vazia ele tenta o POST /ajax/chapters
+        # even with 0 matches, return the handle (same as rakuyomi): the madara
+        # template treats None as "Invalid chapter selector" and aborts before
+        # trying the AJAX fallback; with an empty list it tries POST /ajax/chapters
         return self._store_element(el["soup"], nodes, el["base"])
 
     def _h_html_select_first(self, handle: int, qptr: int, qlen: int) -> int:
@@ -1128,7 +1173,7 @@ class AidokuRuntime:
 
     def _h_defaults_get(self, kptr: int, klen: int) -> int:
         key = self._mem_read(kptr, klen).decode()
-        # caso especial do rakuyomi: idiomas configurados no app
+        # rakuyomi special case: languages configured in the app
         # (MangaPlus/MangaDex filter the catalog by it)
         if key == "languages":
             from .config import config
@@ -1234,7 +1279,7 @@ class AidokuRuntime:
             image = PILImage.open(BytesIO(data))
             image.load()
         except Exception as e:  # noqa: BLE001
-            log.warning("canvas.new_image: decode falhou: %s", e)
+            log.warning("canvas.new_image: decode failed: %s", e)
             return -3
         handle = self._img_next
         self._img_next += 1
@@ -1250,22 +1295,29 @@ class AidokuRuntime:
         return handle
 
     def _h_canvas_get_image_data(self, img: int) -> int:
-        """Retorna handle std com os bytes PNG da imagem."""
+        """Stores a std handle with the image bytes (raw payload for
+        undecodable/encrypted images, PNG otherwise)."""
         from io import BytesIO
 
         image = self._images.get(img)
         if image is None:
             return -2
+        if isinstance(image, tuple):  # (placeholder, raw bytes)
+            return self._store_value(image[1], str_encode=False)
         buf = BytesIO()
         image.save(buf, format="PNG")
         return self._store_value(buf.getvalue(), str_encode=False)
 
     def _h_canvas_get_image_width(self, img: int) -> float:
         image = self._images.get(img)
+        if isinstance(image, tuple):
+            image = image[0]
         return float(image.width) if image is not None else -2.0
 
     def _h_canvas_get_image_height(self, img: int) -> float:
         image = self._images.get(img)
+        if isinstance(image, tuple):
+            image = image[0]
         return float(image.height) if image is not None else -2.0
 
     # ------------------------------------------------------------------ #
@@ -1318,3 +1370,138 @@ class AidokuRuntime:
         resp = request_with_limit(self._http, "GET", url, headers=headers or {})
         resp.raise_for_status()
         return resp.content
+
+    # -- image pipeline (get_image_request / process_page_image) --------- #
+
+    def _export_fn(self, name: str):
+        fn = self.exports.get(name)
+        return fn if isinstance(fn, Func) else None
+
+    def fetch_image_via_source(
+        self,
+        url: str,
+        context: dict[str, str] | None = None,
+    ) -> bytes:
+        """Downloads a page/cover image honoring the source's own request
+        builder (ImageRequestProvider: Referer/UA/cookies) and image
+        processor (decrypt/descramble), like the Aidoku app and rakuyomi.
+        Falls back to a plain GET when the source has no hooks."""
+        method, final_url, headers, body = self._build_image_request(url, context)
+        resp = request_with_limit(
+            self._http, method, final_url, headers=headers, data=body
+        )
+        resp.raise_for_status()
+        data = resp.content
+        processed = self._process_image(url, data, resp.status_code, context)
+        return processed if processed is not None else data
+
+    def _build_image_request(
+        self, url: str, context: dict[str, str] | None
+    ) -> tuple[str, str, dict[str, str], bytes | None]:
+        """Calls the wasm get_image_request export (when present) so the
+        source can attach its own headers/URL. Returns (method, url, headers, body)."""
+        fn = self._export_fn("get_image_request")
+        default = ("GET", url, {"User-Agent": DEFAULT_USER_AGENT}, None)
+        if fn is None:
+            return default
+
+        h_url = self._store_value(url, str_encode=True)
+        h_ctx = self._store_value(context, str_encode=False) if context else -1
+        try:
+            with self._wasm_lock, _sigint_deferred():
+                ptr = fn(self.store, h_url, h_ctx)
+            handle = self._extract_request_handle(ptr)
+        except Exception:  # noqa: BLE001
+            log.debug("get_image_request failed; using plain request", exc_info=True)
+            return default
+        finally:
+            self._std_destroy(h_url)
+            if h_ctx >= 0:
+                self._std_destroy(h_ctx)
+
+        req = self._requests.pop(handle, None)
+        if req is None or not req.get("url"):
+            return default
+        headers = {k: v for k, v in (req.get("headers") or {}).items()}
+        headers.setdefault("User-Agent", DEFAULT_USER_AGENT)
+        method = req.get("method") or "GET"
+        return method, req["url"], headers, req.get("body")
+
+    def _extract_request_handle(self, ptr: int) -> int:
+        """get_image_request returns a Result<i32> buffer (the request handle)."""
+        payload = self._read_result_raw(ptr)
+        return Decoder(payload).varint()
+
+    def _process_image(
+        self,
+        request_url: str,
+        data: bytes,
+        status: int,
+        context: dict[str, str] | None,
+    ) -> bytes | None:
+        """Calls the wasm process_page_image export (decrypt/descramble) when
+        the source provides it. Returns None when absent or on failure."""
+        fn = self._export_fn("process_page_image")
+        if fn is None:
+            return None
+        from io import BytesIO
+
+        from PIL import Image as PILImage
+
+        # try to decode; if the bytes are encrypted, keep the raw payload in
+        # a 0x0 image so the source can still read them via image.data()
+        raw_payload: bytes | None = None
+        try:
+            image = PILImage.open(BytesIO(data))
+            image.load()
+            image = image.convert("RGBA")
+        except Exception:  # noqa: BLE001
+            image = PILImage.new("RGBA", (0, 0))
+            raw_payload = data
+
+        img_handle = self._img_next
+        self._img_next += 1
+        self._images[img_handle] = image
+
+        # ImageResponse { code: u16, headers: map, request { url, headers }, image: ImageRef }
+        resp_value = {
+            "code": status,
+            "headers": {},
+            "request": {"url": request_url, "headers": {}},
+            "image": {"rid": img_handle, "externally_managed": False},
+        }
+        h_resp = self._store_value(resp_value, str_encode=False)
+        h_ctx = self._store_value(context, str_encode=False) if context else -1
+        try:
+            with self._wasm_lock, _sigint_deferred():
+                ptr = fn(self.store, h_resp, h_ctx)
+            payload = self._read_result_raw(ptr)
+        except Exception:  # noqa: BLE001
+            log.debug("process_page_image failed; using raw bytes", exc_info=True)
+            return None
+        finally:
+            self._std_destroy(h_resp)
+            if h_ctx >= 0:
+                self._std_destroy(h_ctx)
+            self._images.pop(img_handle, None)
+
+        # Result<Option<ImageData>>: Option tag + ImageData{width, height, data: Vec<u32>}
+        d = Decoder(payload)
+        if not d.boolean():
+            return None
+        width = d.i64()
+        height = d.i64()
+        n_pixels = d.varint()
+        import struct as _struct
+
+        raw = b"".join(
+            _struct.pack("<I", d.varint() & 0xFFFFFFFF) for _ in range(n_pixels)
+        )
+        expected = width * height * 4
+        if width <= 0 or height <= 0 or len(raw) < expected:
+            log.debug("process_page_image: unexpected image size %dx%d", width, height)
+            return None
+        img = PILImage.frombytes("RGBA", (width, height), raw[:expected])
+        out = BytesIO()
+        img.save(out, format="PNG")
+        return out.getvalue()
