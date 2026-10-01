@@ -309,6 +309,8 @@ class AidokuRuntime:
 
         # env ------------------------------------------------------------ #
         add("env", "print", [i32, i32], [], self._h_std_print)
+        # abort do Rust compilado p/ wasm (panic path em sources 0.8, ex. webtoon)
+        add("env", "abort", [], [], self._h_std_abort)
 
         # net ------------------------------------------------------------ #
         add("net", "init", [i32], [i32], self._h_net_init)
