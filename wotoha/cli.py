@@ -47,11 +47,15 @@ def print_manga_table(mangas: list[dict], title: str, id_key: str = "id") -> Non
     table.add_column("Título", style="white", overflow="fold")
     if mangas and mangas[0].get("sourceId"):
         table.add_column("Source", style="green")
+    if any(m.get("repo") for m in mangas):
+        table.add_column("Repo", style="yellow")
     table.add_column("Status", style="magenta")
     for m in mangas:
         row = [str(m.get(id_key, "?")), m.get("title") or "?"]
         if mangas and mangas[0].get("sourceId"):
             row.append(str(m.get("sourceId")))
+        if any(m.get("repo") for m in mangas):
+            row.append(m.get("repo") or "?")
         row.append((m.get("status") or "?").title())
         table.add_row(*row)
     console.print(table)
@@ -251,7 +255,7 @@ def cmd_search(args) -> None:
         return
 
     catalog = _aidoku_catalog()
-    from .aidoku_store import list_installed
+    from .aidoku_store import list_installed, repo_of
 
     targets = [args.source] if args.source else [s["id"] for s in list_installed()]
     if not targets:
@@ -268,6 +272,8 @@ def cmd_search(args) -> None:
         for sid in targets:
             try:
                 data = catalog.search(sid, args.query, args.page)
+                for m in data["mangaList"]:
+                    m["repo"] = repo_of(sid)
                 results.extend(data["mangaList"])
             except Exception as e:  # noqa: BLE001
                 failed.append((sid, str(e)[:80]))

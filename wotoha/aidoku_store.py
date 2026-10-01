@@ -53,6 +53,7 @@ def install(source_id: str, index_url: str = DEFAULT_INDEX_URL) -> Path:
     resp = requests.get(url, timeout=120)
     resp.raise_for_status()
     dest.write_bytes(resp.content)
+    record_source_repo(source_id, index_url)
     return dest
 
 
@@ -60,8 +61,57 @@ def uninstall(source_id: str) -> bool:
     dest = sources_dir() / f"{source_id}.aix"
     if dest.exists():
         dest.unlink()
+        _forget_source_repo(source_id)
         return True
     return False
+
+
+# proveniência: de qual índice cada source instalado veio
+
+def _source_repos_file() -> Path:
+    return Path(config.sources_dir).expanduser().parent / "source_repos.json"
+
+
+def record_source_repo(source_id: str, index_url: str) -> None:
+    f = _source_repos_file()
+    data: dict[str, str] = {}
+    if f.is_file():
+        try:
+            data = json.loads(f.read_text())
+        except Exception:  # noqa: BLE001
+            data = {}
+    data[source_id] = index_url
+    f.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def _forget_source_repo(source_id: str) -> None:
+    f = _source_repos_file()
+    if not f.is_file():
+        return
+    try:
+        data = json.loads(f.read_text())
+    except Exception:  # noqa: BLE001
+        return
+    if source_id in data:
+        del data[source_id]
+        f.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def repo_of(source_id: str) -> str | None:
+    """Nome curto do repo de origem (ou URL se não tiver nome)."""
+    f = _source_repos_file()
+    if not f.is_file():
+        return None
+    try:
+        url = json.loads(f.read_text()).get(source_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if not url:
+        return None
+    for name, u in list_repos().items():
+        if u == url:
+            return name
+    return url
 
 
 def list_installed() -> list[dict[str, Any]]:
