@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wotoha"
+version = "0.2.0"
+description = "CLI de manga downloader com extensões (Aidoku WASM, LNReader/Mangayomi JS) — sem Java"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "wotoha contributors" }]
+dependencies = [
+    "requests>=2.31",
+    "rich>=13.0",
+    "Pillow>=10.0",
+    "wasmtime>=25.0",
+    "quickjs>=1.19",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+[project.optional-dependencies]
+pdf = ["reportlab>=4.0"]
+cb7 = ["py7zr>=0.21"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+wotoha = "wotoha.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["wotoha*"]
