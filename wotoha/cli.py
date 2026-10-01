@@ -246,6 +246,7 @@ def cmd_sources(args) -> None:
 # --------------------------------------------------------------------------- #
 
 def cmd_search(args) -> None:
+    _set_language(args)
     if args.engine == "suwayomi":
         if not args.source:
             err_console.print("Use --source <id>.")
@@ -322,6 +323,7 @@ def cmd_search(args) -> None:
 
 
 def cmd_info(args) -> None:
+    _set_language(args)
     if args.engine == "suwayomi":
         client = _suwayomi_client()
         full = client.get_manga_full(args.manga_id)
@@ -342,8 +344,12 @@ def cmd_info(args) -> None:
     meta = []
     if d.get("authors"):
         meta.append(f"Autor: {', '.join(d['authors'])}")
+    if d.get("artists") and set(d["artists"]) - set(d.get("authors") or []):
+        meta.append(f"Artista: {', '.join(d['artists'])}")
     if d.get("status"):
         meta.append(f"Status: {d['status']}")
+    if d.get("url"):
+        meta.append(f"Link: {d['url']}")
     if d.get("tags"):
         meta.append(f"Tags: {', '.join(t.strip() for t in d['tags'])}")
     for line in meta:
@@ -352,14 +358,43 @@ def cmd_info(args) -> None:
         console.print(f"\n{d['description']}\n")
     chapters = d.get("chapters") or []
     console.print(f"Capítulos: {len(chapters)}")
+    by_lang: dict[str, int] = {}
+    locked_count = 0
+    last_date = None
+    for c in chapters:
+        lang = c.get("language") or "?"
+        by_lang[lang] = by_lang.get(lang, 0) + 1
+        if c.get("locked"):
+            locked_count += 1
+        if c.get("dateUploaded"):
+            last_date = max(last_date or 0, c["dateUploaded"])
+    if len(by_lang) > 1 or (by_lang and next(iter(by_lang)) != "?"):
+        dist = ", ".join(f"{k}: {v}" for k, v in sorted(by_lang.items()))
+        console.print(f"Idiomas: {dist}")
+    if locked_count:
+        console.print(f"Bloqueados: {locked_count}")
+    if last_date:
+        from datetime import datetime, timezone
+
+        dt = datetime.fromtimestamp(last_date, tz=timezone.utc)
+        console.print(f"Último capítulo: {dt.strftime('%Y-%m-%d')}")
     if chapters:
         console.print("\n[bold]Mais recentes:[/bold]")
         for c in chapters[:5]:
             num = c.get("chapterNumber")
             label = f"cap. {num:g}" if num is not None else c.get("title") or "?"
-            console.print(f"  {c['key']} — {label}")
+            lang = c.get("language")
+            suffix = f" [{lang}]" if lang and len(by_lang) > 1 else ""
+            console.print(f"  {c['key']} — {label}{suffix}")
         if len(chapters) > 5:
             console.print(f"  ... e mais {len(chapters) - 5}")
+
+
+def _set_language(args) -> None:
+    """--language sobrepõe WOTOHA_LANGUAGES pro filtro dos sources multi-idioma."""
+    lang = getattr(args, "language", None)
+    if lang:
+        config.languages = lang
 
 
 def _apply_delay(args) -> None:
@@ -400,6 +435,7 @@ def _download_aidoku(args) -> None:
     from .native_downloader import NativeDownloader
 
     _apply_delay(args)
+    _set_language(args)
     catalog = _aidoku_catalog()
     dl = NativeDownloader(catalog, workers=args.workers, retries=args.retries)
 
@@ -620,12 +656,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("query")
     p_search.add_argument("--source", help="ID do source (default: todos instalados)")
     p_search.add_argument("--page", type=int, default=1)
+    p_search.add_argument(
+        "--language", "-l", default=None, metavar="LANG",
+        help="idioma pro filtro de capítulos dos sources (ex.: en, pt-BR); "
+             "padrão: WOTOHA_LANGUAGES (atual: %(default)s)",
+    )
     p_search.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_search.set_defaults(func=cmd_search)
 
     # info
     p_info = sub.add_parser("info", help="Detalhes do mangá")
     p_info.add_argument("manga_id", help="ID retornado pela busca (sourceId::key)")
+    p_info.add_argument(
+        "--language", "-l", default=None, metavar="LANG",
+        help="idioma pro filtro de capítulos dos sources (ex.: en, pt-BR)",
+    )
     p_info.add_argument("--engine", default="aidoku", choices=["aidoku", "suwayomi"])
     p_info.set_defaults(func=cmd_info)
 
@@ -650,6 +695,11 @@ def build_parser() -> argparse.ArgumentParser:
         help='faixa de páginas: "2", "1-10", "3--" (as 3 últimas)',
     )
     p_dl.add_argument("--no-oneshot", action="store_true", help="ignora capítulos oneshot")
+    p_dl.add_argument(
+        "--language", "-l", default=None, metavar="LANG",
+        help="idioma dos capítulos em sources multi-idioma (ex.: en, pt-BR); "
+             "padrão: WOTOHA_LANGUAGES",
+    )
     p_dl.add_argument(
         "--order", choices=["desc", "asc"], default="desc",
         help="ordem de download (default: mais recente primeiro)",

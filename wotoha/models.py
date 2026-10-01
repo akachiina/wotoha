@@ -122,6 +122,7 @@ class Chapter:
             "dateUploaded": self.date_uploaded,
             "scanlators": self.scanlators,
             "url": self.url,
+            "language": self.language,
             "locked": self.locked,
         }
 
@@ -206,6 +207,7 @@ class Manga:
             "tags": self.tags,
             "status": STATUS_NAMES[self.status] if self.status < len(STATUS_NAMES) else "Unknown",
             "viewer": self.viewer,
+            "contentRating": self.content_rating,
         }
 
 
