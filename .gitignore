@@ -24,5 +24,8 @@ out/
 # Ambiente
 .env
 
+# Notas locais de contribuição (não publicar)
+AGENTS.md
+
 # Repos de referência (clonados, somente leitura)
 REF/

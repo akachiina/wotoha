@@ -1,6 +1,6 @@
 # wotoha
 
-Manga downloader CLI with **Aidoku (WebAssembly) extensions** — lightweight, pure Python, **no Java**.
+Manga downloader CLI powered by **Aidoku (WebAssembly) extensions** — lightweight, pure Python, **no Java**.
 
 ```
 ┌──────────┐  runs     ┌────────────────────┐  scrapes  ┌──────────────┐
@@ -11,162 +11,185 @@ Manga downloader CLI with **Aidoku (WebAssembly) extensions** — lightweight, p
 
 - **~80 MB RAM** total (the Suwayomi/JVM path uses ~2.6 GB)
 - No JVM, no Android, no CEF/Chromium — just Python + wasmtime
-- **143+ sources**: official Aidoku index + third-party repos (Yomu, etc.)
-- Download as `raw`, `epub`, `cbz`, `cb7` or `pdf`
-- Per-command **language filter** (`--language`)
-- **Optional** Suwayomi-Server support (Mihon/keiyoushi extensions) via `--engine suwayomi`
+- **140+ sources**: official Aidoku index + third-party repos
+- Download as `raw`, `epub`, `cbz`, `cb7` or `pdf`, per chapter, per volume, or as a single file
+- Per-run **language filter** (`--language`) for multi-language sources
+- **Optional** Suwayomi-Server support (Mihon extensions) via `--engine suwayomi`
 
 > Inspired by [rakuyomi](https://github.com/tachibana-shin/rakuyomi) (KOReader reader that runs
 > Aidoku/LNReader/Keiyoushi sources with embedded runtimes) and
 > [mangadex-downloader](https://github.com/mansuf/mangadex-downloader) (CLI UX).
-> The full reference lives in the `REF/` folder.
 
 ## Install
 
 ```bash
-pipx install git+https://github.com/LixxRarin/wotoha.git
+pipx install git+https://github.com/akachiina/wotoha.git
 ```
 
 Or with plain pip:
 
 ```bash
-pip install git+https://github.com/LixxRarin/wotoha.git
+pip install git+https://github.com/akachiina/wotoha.git
 ```
 
 Local development:
 
 ```bash
-git clone https://github.com/LixxRarin/wotoha.git
+git clone https://github.com/akachiina/wotoha.git
 cd wotoha
 pip install -e .
 ```
 
-Dependencies: `wasmtime`, `beautifulsoup4`, `requests`, `rich`, `Pillow`.
+Dependencies: `wasmtime`, `beautifulsoup4`, `lxml`, `requests`, `rich`, `Pillow`.
+Optional: `pip install wotoha[cb7]` (needs `py7zr` for `--format cb7`);
+SOCKS proxy (`--proxy socks5://...`) needs `pip install requests[socks]`.
 
-## Usage
+## Quickstart
 
 ```bash
-# Sources (Aidoku extensions)
-wotoha sources list                    # installed + available (aggregates all repos)
-wotoha sources list --filter asura     # installed first, then matches by ID/name
-wotoha sources list --lang pt-BR --repo yomu
-wotoha sources search asura            # search across all indexes
-wotoha sources install en.asurascans   # looks the source up in every repo
-wotoha sources uninstall en.asurascans
+# 1. Install a source
+wotoha sources search asura
+wotoha sources install en.asurascans
 
-# Third-party repositories
-wotoha sources repo list               # registered repos (aidoku is built in)
-wotoha sources repo add yomu https://smexhy.github.io/yomu-aidoku-sources/index.min.json
-wotoha sources install --index yomu en.atsumaru    # or just 'install en.atsumaru'
-wotoha sources install --index https://.../index.min.json multi.kagane  # direct URL
-
-# Discovery
+# 2. Find a manga (IDs are composite: sourceId::key)
 wotoha search "solo leveling" --source en.asurascans
-wotoha search "berserk"                # searches every installed source
-wotoha info en.asurascans::solo-leveling   # link, tags, languages, latest chapter date
 
-# Language (multi-language sources: MangaDex, MangaPlus, Mangafire...)
-wotoha search "onimai" -l pt-BR
-wotoha info multi.mangadex::<uuid> -l pt-BR        # translated chapters
-wotoha download multi.mangadex::<uuid> -l pt-BR -c 1-10
+# 3. Preview and download (files land in the current directory by default)
+wotoha download en.asurascans::solo-leveling -c 1-10 --dry-run
+wotoha download en.asurascans::solo-leveling -f epub -c 1-10
+```
 
-# Download
+## Sources
+
+```bash
+wotoha sources list                        # installed first, then available
+wotoha sources list --filter asura         # match by ID or name
+wotoha sources list --lang pt-BR           # filter by language
+wotoha sources list --repo yomu            # filter by repository
+wotoha sources list --installed-only --limit 10
+wotoha sources search asura --limit 5
+wotoha sources install en.asurascans
+wotoha sources uninstall en.asurascans
+```
+
+Third-party repositories (any repo publishing an `index.min.json`
+in the Aidoku format, e.g.
+[yomu-aidoku-sources](https://github.com/Smexhy/yomu-aidoku-sources)):
+
+```bash
+wotoha sources repo add yomu https://smexhy.github.io/yomu-aidoku-sources/index.min.json
+wotoha sources repo list
+wotoha sources install --index yomu en.atsumaru   # or just: install en.atsumaru
+wotoha sources repo remove yomu
+```
+
+`install` finds the source in every registered repo automatically;
+`--index <name|url>` forces a specific one. Provenance is stored in
+`~/.wotoha/repos.json` and `~/.wotoha/source_repos.json` (shown as the
+Repo column).
+
+## Search & info
+
+```bash
+wotoha search "berserk"                              # all installed sources
+wotoha search "berserk" --source en.asurascans
+wotoha search "solo" --pick                          # pick results, download latest
+wotoha search "solo" --pick -c 1-10 -f epub          # pick, download a range
+wotoha search "solo" --json                          # machine-readable output
+
+wotoha info en.asurascans::solo-leveling
+wotoha info multi.mangadex::<uuid> -l pt-BR --show-chapters 0
+```
+
+`--language/-l` sets the chapter language on multi-language sources
+(MangaDex, MangaPlus, MangaFire...); default comes from `WOTOHA_LANGUAGES`
+(`eng`). Note: it filters **chapters**, not search-result rows.
+
+## Download
+
+```bash
 wotoha download en.asurascans::solo-leveling -f epub              # everything
 wotoha download en.asurascans::solo-leveling -f cbz -c latest     # latest chapter
 wotoha download en.asurascans::solo-leveling -f pdf -c 1-10,15    # ranges
-wotoha download ... -o ./my-folder
-wotoha download ID -c 1-10 --dry-run     # preview the selection, download nothing
-
-# Convert downloaded folders (offline, engine-independent)
-wotoha convert ./My-Manga -f cbz                  # each chapter -> .cbz
-wotoha convert ./My-Manga -f epub --mode single   # whole manga -> one .epub
-wotoha convert ./A ./B -f pdf -o ./out
-
-# Fine-grained selection
-wotoha download ID --pages 1-10        # only pages 1-10 ("3--" = last 3; "-5" = minus last 5)
-wotoha download ID --start-chapter 10 --end-chapter 20
-wotoha download ID --mode volume -f epub   # pack per volume
-wotoha download ID --mode single -f cbz    # whole manga in a single file
-wotoha download ID --no-oneshot --order asc --cover
-wotoha download ID --use-volume-cover    # cover image as first page of the file
-wotoha search "solo" --source en.asurascans --pick  # pick interactively and download
-wotoha search "solo" --pick -c 1-10 -f epub         # pick, but download ranges
-wotoha info ID --show-chapters 0         # list every chapter (default: 5 recent)
-wotoha search "solo" --json / wotoha info ID --json # machine-readable output
-wotoha sources list --installed-only --limit 10
-
-# Batch
-wotoha download ID1 ID2 ID3 -f epub
-wotoha download --batch-from-file list.txt -f cbz
-
-# Network
-wotoha download ID --proxy socks5://localhost:9050
-wotoha download ID --delay-requests 2.5   # rate limit (1 request every 2.5s)
+wotoha download multi.mangadex::<uuid> -l pt-BR -c 1-10
+wotoha download ID --dry-run                          # preview selection only
+wotoha download ID1 ID2 ID3 -f epub                   # batch: multiple IDs
+wotoha download --batch-from-file list.txt -f cbz     # batch: one ID per line
+wotoha download ... -o ./my-folder                    # custom output directory
 ```
 
-Manga IDs are composite (`sourceId::key`) and come from search results.
+Chapter selection:
 
-## Source repositories
+| Flag | Meaning |
+|---|---|
+| `-c all` (default) | every chapter |
+| `-c latest` | only the most recent chapter |
+| `-c 1-10,15,20-23` | ranges by chapter number |
+| `--start-chapter 10 --end-chapter 20` | numeric cut (inclusive) |
+| `--pages 1-10` | only pages 1–10 of each chapter (`5-` = from 5 on, `3--` = last 3, `-5` = drop last 5) |
+| `--no-oneshot` | skip oneshot chapters |
+| `--order asc` | oldest first (default: newest first) |
 
-Beyond the official Aidoku community index, wotoha accepts any repo publishing an
-`index.min.json` in the same format (e.g.
-[yomu-aidoku-sources](https://github.com/Smexhy/yomu-aidoku-sources)).
+Packaging (`--mode`): `chapter` (default, one file per chapter),
+`volume` (one file per volume), `single` (whole manga in one file).
+`--cover` saves the manga cover; `--use-volume-cover` inserts it as the
+first page of each output.
+
+Network: `--workers 4` (parallel pages per chapter), `--retries 3`,
+`--delay-requests 2.5` (rate limit), `--proxy socks5://localhost:9050`.
+
+A summary table (`ok` / `failed` / `skipped`) is printed at the end.
+Failed chapters don't stop the run — re-run the same command to resume.
+Exit codes: `0` ok, `1` error, `130` interrupted (Ctrl+C keeps partial files).
+
+## Convert
+
+Repackage already-downloaded folders without re-downloading
+(offline, engine-independent):
 
 ```bash
-wotoha sources repo add <name> <index.min.json-url>
-wotoha sources repo list                 # aidoku (built-in) + whatever you add
-wotoha sources repo remove <name>
+wotoha convert ./My-Manga -f cbz                  # each chapter folder -> .cbz
+wotoha convert ./My-Manga -f epub --mode single   # whole manga -> one .epub
+wotoha convert ./A ./B -f pdf -o ./out
 ```
 
-- `list`/`search` aggregate **all** repos and show the **Repo** column
-  (`aidoku+yomu` when a source exists in more than one)
-- `install` looks the source up in every repo; `--index <name|url>` forces one
-- Provenance lives in `~/.wotoha/repos.json` (repos) and
-  `~/.wotoha/source_repos.json` (origin of each installed source)
-- SDK 0.8 sources are supported (Atsumaru, WEBTOON, Mangaball, Kagane...)
+Each input is a manga folder (subfolders with images) or a single
+chapter folder (images directly). `--title` overrides the manga title.
 
 ## Formats
 
 | Format | Output |
 |---|---|
-| `raw` | `Title/Ch/001.webp ...` |
+| `raw` | `Title/Chapter 1/0001.webp ...` |
 | `epub` | one `.epub` per chapter |
 | `cbz` | one `.cbz` per chapter |
 | `cb7` | one `.cb7` (7-zip) per chapter — requires `pip install wotoha[cb7]` |
 | `pdf` | one `.pdf` per chapter |
 
 All packed formats include **ComicInfo.xml** (title, number, volume, author,
-tags, date) so Kavita/Komga/Tachiyomi pick up the metadata — in
-`volume`/`single` mode with consolidated metadata.
+tags, date) so Kavita/Komga/Tachiyomi pick up the metadata — consolidated
+in `volume`/`single` mode. Existing outputs are skipped, never overwritten
+(delete the file to force a re-download).
 
-## Architecture
+## Configuration
 
-```
-wotoha/
-├── aidoku_runtime.py   # WASM host: Aidoku next-SDK ABI (net/html/std/defaults)
-├── aidoku_store.py     # index + .aix installation, named repos
-├── aidoku_catalog.py   # search/manga/chapters/pages facade
-├── native_downloader.py# chapter downloads (resume, retries, parallel)
-├── postcard.py         # postcard codec (ABI serialization format)
-├── models.py           # Manga/Chapter/Page with binary codecs
-├── formats.py          # raw/epub/cbz/cb7/pdf + chapter/volume/single modes
-├── comicinfo.py        # ComicInfo.xml (ComicRack metadata)
-├── net.py              # shared proxy, rate limit, timeout
-├── batch.py            # interactive selection (--pick) and batch parsing
-├── downloader.py       # (legacy suwayomi)
-├── client.py           # (legacy suwayomi)
-└── server_manager.py   # (legacy suwayomi)
-```
+Everything via environment (a minimal `.env` in the working directory
+is also read: `KEY=VALUE`, no quotes/expansion):
 
-The runtime implements the same ABI rakuyomi (Rust/wasmi) and the Aidoku app
-use: the WASM source calls host imports (`net.send`, `html.select`,
-`std.read_buffer`...) and returns postcard-serialized structs that wotoha
-decodes. Fully sandboxed: the extension has no disk/network access except
-through host functions.
+| Variable | Default | Meaning |
+|---|---|---|
+| `MANGA_DL_DIR` | current directory | output directory (`-o` overrides per-run) |
+| `MANGA_DL_FORMAT` | `raw` | default `--format` |
+| `WOTOHA_SOURCES_DIR` | `~/.wotoha/sources` | installed `.aix` sources |
+| `WOTOHA_LANGUAGES` | `eng` | default `--language` |
+| `WOTOHA_PROXY` | — | default `--proxy` |
+| `WOTOHA_TIMEOUT` | `30` | HTTP timeout (seconds) |
+| `WOTOHA_RATE_CALLS` / `WOTOHA_RATE_SECONDS` | `0` / `2.5` | rate limit (`--delay-requests N` = 1 req per N sec) |
+| `MANGA_DL_URL` | `http://localhost:4567` | Suwayomi server URL (legacy engine) |
 
-## Suwayomi (optional, Mihon/keiyoushi extensions)
+## Suwayomi (optional, legacy engine)
 
-If you also want the 1380 keiyoushi sources (they need a JVM):
+For the Mihon/keiyoushi extensions (needs a JVM):
 
 ```bash
 wotoha server download && wotoha server start
@@ -175,18 +198,8 @@ wotoha search "one piece" --engine suwayomi --source 2131019126180322627
 wotoha download <id> --engine suwayomi -f epub
 ```
 
-## Roadmap
-
-- [x] Aidoku WASM runtime (next-SDK 0.7 **and 0.8**)
-- [x] Full CLI (sources/search/info/download/convert)
-- [x] ComicInfo.xml, cb7, chapter/volume/single modes, page ranges
-- [x] Proxy, rate limit, batch, interactive --pick, --cover, --no-oneshot, --use-volume-cover
-- [x] Third-party repos (`sources repo`, `--index`, install auto-discovery)
-- [x] Language filter (`--language` on search/info/download) and rich info
-- [x] Offline `convert` (raw folders -> cbz/epub/pdf/cb7), `--dry-run`, `--json`, numbered search results
-- [ ] JS runtime — LNReader/Mangayomi via quickjs
-- [ ] Advanced search filters (`filters.json`)
-- [ ] Cross-source result comparison (same title on several sources)
+Search/info/download/convert behave the same under both engines
+(suwayomi IDs are numeric; `--batch-from-file` is aidoku-only).
 
 ## Legal notes
 
