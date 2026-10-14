@@ -1337,7 +1337,7 @@ class AidokuRuntime:
     # ------------------------------------------------------------------ #
 
     def get_search_manga_list(self, query: str, page: int, filters: list | None = None) -> models.MangaPageResult:
-        # NOTE: like rakuyomi, the query is stored WITHOUT str-encoding —
+        # NOTE: like rakuyomi, the query is stored WITHOUT str-encoding;
         # sources read it as raw utf8 bytes (a postcard varint prefix would
         # leak into the string as a control char, e.g. 0x0D = '\r').
         hq = self._store_value(query, str_encode=False)
@@ -1441,7 +1441,7 @@ class AidokuRuntime:
 
     def _extract_request_handle(self, ptr: int) -> int:
         """get_image_request returns Result<i32> as a postcard i32 (zigzag
-        varint), optionally wrapped in an Option — rakuyomi reads it with
+        varint), optionally wrapped in an Option: rakuyomi reads it with
         read_next::<i32>. Bytes observed from mangafire: `02 01 11 00 ...`
         = zigzag(1)=2, then the Some(...) payload bytes we must skip."""
         payload = self._read_result_raw(ptr)

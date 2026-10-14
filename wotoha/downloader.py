@@ -219,7 +219,7 @@ class ChapterDownloader:
                     break
                 delay = min(2 ** attempt, 10)
                 log.warning(
-                    "Page %d failed (attempt %d/%d): %s — retrying in %ds",
+                    "Page %d failed (attempt %d/%d): %s. Retrying in %ds",
                     page_index, attempt, self.retries, e, delay,
                 )
                 # interruptible backoff: exits as soon as Ctrl+C is seen

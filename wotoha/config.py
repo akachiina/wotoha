@@ -63,7 +63,7 @@ def block_sigint() -> None:
     """Blocks SIGINT on the calling thread.
 
     Used as a ThreadPoolExecutor initializer: worker threads must never
-    receive Ctrl+C — the main thread handles it. (A signal interrupting
+    receive Ctrl+C. The main thread handles it. (A signal interrupting
     WASM execution makes wasmtime panic with SIGABRT/SIGSEGV.)"""
     try:
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})

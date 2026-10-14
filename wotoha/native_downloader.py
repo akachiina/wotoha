@@ -205,7 +205,7 @@ class NativeDownloader:
                         f.unlink()
                 if n + 1 < len(releases):
                     log.warning(
-                        "release %s of '%s' failed (%s) — trying another release",
+                        "release %s of '%s' failed (%s). Trying another release",
                         key[:8], chapter.name, e,
                     )
                 continue
@@ -249,7 +249,7 @@ class NativeDownloader:
                         break
                     delay = min(2**attempt, 10)
                     log.warning(
-                        "page %d failed (%d/%d): %s — retrying in %ds",
+                        "page %d failed (%d/%d): %s. Retrying in %ds",
                         i + 1, attempt, self.retries, e, delay,
                     )
                     # interruptible backoff: exits as soon as Ctrl+C is seen

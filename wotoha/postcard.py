@@ -1,6 +1,6 @@
 """Postcard serialization format (subset used by the Aidoku next-SDK ABI).
 
-Reference: https://docs.rs/postcard — varint (LEB128) lengths, zigzag for
+Reference: https://docs.rs/postcard. Varint (LEB128) lengths, zigzag for
 signed ints, fixed-width LE for floats, 1-byte discriminants for Option/enum.
 """
 

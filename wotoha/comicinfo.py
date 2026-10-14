@@ -1,4 +1,4 @@
-"""ComicInfo.xml — metadata in the ComicRack/Anansi format (Kavita, Komga, Tachiyomi).
+"""ComicInfo.xml: metadata in the ComicRack/Anansi format (Kavita, Komga, Tachiyomi).
 
 Ported from the ComicInfoPlugin of mangadex-downloader
 (REF/mangadex-downloader/mangadex_downloader/format/comicinfo.py).

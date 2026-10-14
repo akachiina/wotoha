@@ -260,7 +260,7 @@ def cmd_sources(args) -> None:
         if limit > 0:
             all_ids = all_ids[:limit]
 
-        title = f"Aidoku sources — {len(installed)} installed, {len(all_ids)} shown"
+        title = f"Aidoku sources: {len(installed)} installed, {len(all_ids)} shown"
         if filtering:
             title += f" (filtered from {total_before})"
         table = Table(title=title)
@@ -465,7 +465,7 @@ def cmd_search(args) -> None:
         err_console.print(f"[red]Failed {sid}:[/red] {err}")
     if failed and not results:
         err_console.print(
-            "[yellow]Hint: the source may not be installed — "
+            "[yellow]Hint: the source may not be installed. "
             "run 'wotoha sources install <id>' or 'wotoha sources list'.[/yellow]"
         )
     if not results:
@@ -543,7 +543,7 @@ def cmd_info(args) -> None:
             for c in chapters[:show]:
                 num = c.get("chapterNumber")
                 label = f"ch. {num:g}" if num is not None else c.get("name") or "?"
-                console.print(f"  {c.get('index')} — {label}")
+                console.print(f"  {c.get('index')}: {label}")
             if len(chapters) > show:
                 console.print(f"  ... and {len(chapters) - show} more (use --show-chapters 0 for all)")
         elif chapters:
@@ -551,7 +551,7 @@ def cmd_info(args) -> None:
             for c in chapters:
                 num = c.get("chapterNumber")
                 label = f"ch. {num:g}" if num is not None else c.get("name") or "?"
-                console.print(f"  {c.get('index')} — {label}")
+                console.print(f"  {c.get('index')}: {label}")
         return
 
     catalog = _aidoku_catalog()
@@ -611,7 +611,7 @@ def cmd_info(args) -> None:
             label = f"ch. {num:g}" if num is not None else c.get("title") or "?"
             lang = c.get("language")
             suffix = f" [{lang}]" if lang and len(by_lang) > 1 else ""
-            console.print(f"  {c['key']} — {label}{suffix}")
+            console.print(f"  {c['key']}: {label}{suffix}")
         if show != 0 and len(chapters) > show:
             console.print(f"  ... and {len(chapters) - show} more (use --show-chapters 0 for all)")
 
@@ -773,7 +773,7 @@ def _download_aidoku(args) -> None:
         order = selected[::-1] if args.order == "asc" else selected
 
         console.print(
-            f"Downloading [bold cyan]{details['title']}[/bold cyan] — "
+            f"Downloading [bold cyan]{details['title']}[/bold cyan]: "
             f"{len(order)} chapter(s), format {args.format.upper()}, mode {mode}"
         )
 
@@ -821,7 +821,7 @@ def _download_aidoku(args) -> None:
                 # let the progress bar render one last time; the ThreadPoolExecutor
                 # atexit hook would otherwise spew join noise on shutdown
                 err_console.print(
-                    "\n[yellow]Interrupted — partial files kept. "
+                    "\n[yellow]Interrupted. Partial files kept. "
                     "Re-run the same command to resume.[/yellow]"
                 )
                 raise SystemExit(130) from None
@@ -833,7 +833,7 @@ def _download_aidoku(args) -> None:
         return
     console.print("[green]Done.[/green] Output at:", config.download_dir.resolve())
     if all_results and all(s != "ok" and s != "skipped" for _, s, _ in all_results):
-        err_console.print("[yellow]Hint: all chapters failed. Re-run later — flaky image CDNs recover over time.[/yellow]")
+        err_console.print("[yellow]Hint: all chapters failed. Re-run later. Flaky image CDNs recover over time.[/yellow]")
 
 
 def _download_suwayomi(args) -> None:
@@ -906,7 +906,7 @@ def _download_suwayomi(args) -> None:
     order = selected[::-1] if args.order == "asc" else selected
 
     console.print(
-        f"Downloading [bold cyan]{manga_meta['title']}[/bold cyan] — "
+        f"Downloading [bold cyan]{manga_meta['title']}[/bold cyan]: "
         f"{len(order)} chapter(s), format {args.format.upper()}, mode {mode}"
     )
 
@@ -1062,7 +1062,7 @@ def cmd_update(args) -> None:
             _run_update(["git", "-C", str(root), "pull", "--ff-only"])
         except MangaDlError as e:
             raise MangaDlError(
-                f"{e}\nHint: the checkout has local changes — commit or stash them, then retry."
+                f"{e}\nHint: the checkout has local changes: commit or stash them, then retry."
             ) from None
     console.print("[green]Updated.[/green]", end=" ")
     console.print("Run [bold]wotoha --version[/bold] to confirm.")
@@ -1088,7 +1088,7 @@ def cmd_convert(args) -> None:
     """Repackages downloaded chapters (raw folders) into cbz/epub/pdf/cb7.
 
     Each input may be a manga folder (subfolders with images) or a single
-    chapter folder (images directly). No network access — engine-independent.
+    chapter folder (images directly). No network access. Engine-independent.
     """
     from types import SimpleNamespace
 
@@ -1159,7 +1159,7 @@ def cmd_convert(args) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="wotoha",
-        description="Manga downloader CLI with Aidoku (WASM) extensions — lightweight, Java-free.",
+        description="Manga downloader CLI with Aidoku (WASM) extensions, lightweight, Java-free.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
                "  wotoha sources list --installed-only\n"

@@ -5,30 +5,28 @@
 <h1 align="center">wotoha</h1>
 
 <p align="center">
-  Manga downloader CLI powered by <a href="https://github.com/aidoku-community">Aidoku</a> (WebAssembly) extensions — lightweight, pure Python, no Java
+  Manga downloader CLI powered by <a href="https://github.com/aidoku-community">Aidoku</a> (WebAssembly) extensions, lightweight, pure Python, no Java
 </p>
 
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python"></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
-  <a href="#"><img src="https://img.shields.io/badge/aidoku-SDK_0.7_+_0.8-purple.svg" alt="Aidoku"></a>
-  <a href="#"><img src="https://img.shields.io/badge/engine-wasmtime-orange.svg" alt="wasmtime"></a>
+
 </p>
 
 ---
 
 ## Features
 
-- **140+ sources** — official Aidoku index plus third-party repos (`sources repo add`)
-- **5 output formats** — `raw`, `epub`, `cbz`, `cb7`, `pdf`, all with ComicInfo.xml metadata
-- **3 packaging modes** — per `chapter`, per `volume`, or `single` file for the whole manga
-- **Language filter** — per-run `--language` for multi-language sources (MangaDex, MangaPlus, MangaFire...)
-- **Resume built in** — re-run the same command, finished chapters are skipped
-- **Offline convert** — repackage downloaded folders without re-downloading
-- **Optional Suwayomi engine** — Mihon extensions via `--engine suwayomi` (needs a JVM)
+- **140+ sources**: official Aidoku index plus third-party repos (`sources repo add`)
+- **5 output formats**: `raw`, `epub`, `cbz`, `cb7`, `pdf`, all with ComicInfo.xml metadata
+- **3 packaging modes**: per `chapter`, per `volume`, or `single` file for the whole manga
+- **Language filter**: per-run `--language` for multi-language sources (MangaDex, MangaPlus, MangaFire...)
+- **Resume built in**: re-run the same command, finished chapters are skipped
+- **Offline convert**: repackage downloaded folders without re-downloading
+- **Optional Suwayomi engine**: Mihon extensions via `--engine suwayomi` (needs a JVM)
 
-> Inspired by [rakuyomi](https://github.com/tachibana-shin/rakuyomi) (Aidoku runtime for KOReader)
-> and [mangadex-downloader](https://github.com/mansuf/mangadex-downloader) (CLI UX).
+> Inspired by [mangadex-downloader](https://github.com/mansuf/mangadex-downloader) (CLI UX).
 
 ## Installation
 
@@ -149,7 +147,7 @@ cover; `--use-volume-cover` inserts it as the first page of each output.
 Network: `--workers 4` (parallel pages), `--retries 3`,
 `--delay-requests 2.5` (rate limit), `--proxy socks5://localhost:9050`.
 
-A summary table (`ok` / `failed` / `skipped`) ends every run — one bad
+A summary table (`ok` / `failed` / `skipped`) ends every run. One bad
 chapter never kills the batch. Exit codes: `0` ok, `1` error,
 `130` interrupted (partial files kept, re-run to resume).
 
@@ -176,7 +174,7 @@ folder (images directly). `--title` overrides the manga title.
 | `cb7` | one `.cb7` per chapter (needs `wotoha[cb7]`) |
 | `pdf` | one `.pdf` per chapter |
 
-Existing outputs are skipped, never overwritten — delete the file to
+Existing outputs are skipped, never overwritten. Delete the file to
 force a re-download.
 
 ## Configuration
@@ -190,7 +188,7 @@ Environment only (a minimal `.env` in the working directory is also read:
 | `MANGA_DL_FORMAT` | `raw` | default `--format` |
 | `WOTOHA_SOURCES_DIR` | `~/.wotoha/sources` | installed `.aix` sources |
 | `WOTOHA_LANGUAGES` | `eng` | default `--language` |
-| `WOTOHA_PROXY` | — | default `--proxy` |
+| `WOTOHA_PROXY` | - | default `--proxy` |
 | `WOTOHA_TIMEOUT` | `30` | HTTP timeout, seconds |
 | `WOTOHA_RATE_CALLS` / `WOTOHA_RATE_SECONDS` | `0` / `2.5` | rate limit (`--delay-requests N` = 1 req / N sec) |
 | `MANGA_DL_URL` | `http://localhost:4567` | Suwayomi server URL (legacy engine) |
@@ -219,7 +217,7 @@ wotoha/
 The runtime implements the same ABI rakuyomi and the Aidoku app use: the
 WASM source calls host imports (`net.send`, `html.select`,
 `std.read_buffer`...) and returns postcard-serialized structs that wotoha
-decodes. Fully sandboxed — no disk/network access except through host
+decodes. Fully sandboxed. No disk/network access except through host
 functions.
 
 ## Suwayomi (experimental engine)
