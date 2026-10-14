@@ -29,11 +29,12 @@ Single-package Python CLI (`wotoha/`), entrypoint `wotoha.cli:main` (console scr
 
 ## Conventions / gotchas
 
-- Config is env-only via `config.py` + minimal `.env` loader (`KEY=VALUE`, no quotes/expansion, `setdefault` so real env wins): `MANGA_DL_URL`, `MANGA_DL_FORMAT`, `MANGA_DL_DIR` (default `./downloads`), `MANGA_DL_SERVER_JAR`, `WOTOHA_SOURCES_DIR` (default `~/.wotoha/sources`), `WOTOHA_PROXY`, `WOTOHA_TIMEOUT`, `WOTOHA_RATE_CALLS`/`WOTOHA_RATE_SECONDS`, `WOTOHA_LANGUAGES`. `-o/--output` overrides `download_dir` per-run.
+- Config is env-only via `config.py` + minimal `.env` loader (`KEY=VALUE`, no quotes/expansion, `setdefault` so real env wins): `MANGA_DL_URL`, `MANGA_DL_FORMAT`, `MANGA_DL_DIR` (default: current directory), `MANGA_DL_SERVER_JAR`, `WOTOHA_SOURCES_DIR` (default `~/.wotoha/sources`), `WOTOHA_PROXY`, `WOTOHA_TIMEOUT`, `WOTOHA_RATE_CALLS`/`WOTOHA_RATE_SECONDS`, `WOTOHA_LANGUAGES`. `-o/--output` overrides `download_dir` per-run.
 - Sources are `.aix` zips in `~/.wotoha/sources/<id>.aix` (`Payload/main.wasm` + `source.json`); `aidoku_store.py:fetch_index` hits `https://aidoku-community.github.io/sources/index.min.json` live — `sources list` degrades to installed-only offline.
 - `formats.py:get_format(name, base_dir, mode)` monkey-patches `save_chapter` to `_save_chapter_single` when `mode == "single"`; `RawFormat` renames (not copies) the chapter workdir, other formats use `<download_dir>/.cache` + `.wotoha-staging` temp dirs. Skip-if-exists: chapter/volume/single outputs are skipped when the target file/dir already exists — delete output to force re-download.
 - `cb7` raises `MangaDlError` without `py7zr`; `EpubFormat`/`PdfFormat` accumulate volume/single via `_Staging` and finalize in `finish()` — callers must always call `fmt.finish(manga_stub)`.
 - Chapter selection strings (`-c`, `--pages`, `--start/end-chapter`) parse in `downloader.py:parse_page_range` / `select_chapters` — reuse, don't reinvent.
+- `--use-volume-cover` (download): cli.py injects the manga cover as `0000<ext>` into each chapter workdir before `fmt.save_*`; dedupe per volume group in `--mode volume` (once per volume) and once total in `--mode single`. Failure = warning, chapter still downloads.
 - Error handling in `cli.py:main`: catch `MangaDlError`, `requests.HTTPError`, `requests.RequestException`, `FileNotFoundError`, `KeyboardInterrupt` (exit 130); per-chapter failures are caught in `_download_aidoku` (`MangaDlError`/`ValueError`/`RequestException`) so one bad chapter doesn't kill the run; log with `logging.getLogger("wotoha")`, `-v` switches to DEBUG.
 
 ## Workflow

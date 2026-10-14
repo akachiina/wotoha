@@ -27,5 +27,8 @@ dev = ["pytest>=8.0", "ruff>=0.4"]
 [project.scripts]
 wotoha = "wotoha.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/LixxRarin/wotoha"
+
 [tool.setuptools.packages.find]
 include = ["wotoha*"]

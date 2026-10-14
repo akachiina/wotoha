@@ -24,6 +24,20 @@ Manga downloader CLI with **Aidoku (WebAssembly) extensions** — lightweight, p
 ## Install
 
 ```bash
+pipx install git+https://github.com/LixxRarin/wotoha.git
+```
+
+Or with plain pip:
+
+```bash
+pip install git+https://github.com/LixxRarin/wotoha.git
+```
+
+Local development:
+
+```bash
+git clone https://github.com/LixxRarin/wotoha.git
+cd wotoha
 pip install -e .
 ```
 
@@ -34,6 +48,8 @@ Dependencies: `wasmtime`, `beautifulsoup4`, `requests`, `rich`, `Pillow`.
 ```bash
 # Sources (Aidoku extensions)
 wotoha sources list                    # installed + available (aggregates all repos)
+wotoha sources list --filter asura     # installed first, then matches by ID/name
+wotoha sources list --lang pt-BR --repo yomu
 wotoha sources search asura            # search across all indexes
 wotoha sources install en.asurascans   # looks the source up in every repo
 wotoha sources uninstall en.asurascans
@@ -59,6 +75,12 @@ wotoha download en.asurascans::solo-leveling -f epub              # everything
 wotoha download en.asurascans::solo-leveling -f cbz -c latest     # latest chapter
 wotoha download en.asurascans::solo-leveling -f pdf -c 1-10,15    # ranges
 wotoha download ... -o ./my-folder
+wotoha download ID -c 1-10 --dry-run     # preview the selection, download nothing
+
+# Convert downloaded folders (offline, engine-independent)
+wotoha convert ./My-Manga -f cbz                  # each chapter -> .cbz
+wotoha convert ./My-Manga -f epub --mode single   # whole manga -> one .epub
+wotoha convert ./A ./B -f pdf -o ./out
 
 # Fine-grained selection
 wotoha download ID --pages 1-10        # only pages 1-10 ("3--" = last 3; "-5" = minus last 5)
@@ -66,7 +88,12 @@ wotoha download ID --start-chapter 10 --end-chapter 20
 wotoha download ID --mode volume -f epub   # pack per volume
 wotoha download ID --mode single -f cbz    # whole manga in a single file
 wotoha download ID --no-oneshot --order asc --cover
+wotoha download ID --use-volume-cover    # cover image as first page of the file
 wotoha search "solo" --source en.asurascans --pick  # pick interactively and download
+wotoha search "solo" --pick -c 1-10 -f epub         # pick, but download ranges
+wotoha info ID --show-chapters 0         # list every chapter (default: 5 recent)
+wotoha search "solo" --json / wotoha info ID --json # machine-readable output
+wotoha sources list --installed-only --limit 10
 
 # Batch
 wotoha download ID1 ID2 ID3 -f epub
@@ -153,9 +180,10 @@ wotoha download <id> --engine suwayomi -f epub
 - [x] Aidoku WASM runtime (next-SDK 0.7 **and 0.8**)
 - [x] Full CLI (sources/search/info/download/convert)
 - [x] ComicInfo.xml, cb7, chapter/volume/single modes, page ranges
-- [x] Proxy, rate limit, batch, interactive --pick, --cover, --no-oneshot
+- [x] Proxy, rate limit, batch, interactive --pick, --cover, --no-oneshot, --use-volume-cover
 - [x] Third-party repos (`sources repo`, `--index`, install auto-discovery)
 - [x] Language filter (`--language` on search/info/download) and rich info
+- [x] Offline `convert` (raw folders -> cbz/epub/pdf/cb7), `--dry-run`, `--json`, numbered search results
 - [ ] JS runtime — LNReader/Mangayomi via quickjs
 - [ ] Advanced search filters (`filters.json`)
 - [ ] Cross-source result comparison (same title on several sources)

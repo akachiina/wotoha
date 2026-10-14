@@ -250,7 +250,7 @@ class RawFormat(OutputFormat):
         offset = len(image_files(final))
         for img in image_files(images_dir):
             img.rename(final / f"{offset + _page_number(img):04d}{img.suffix}")
-        log.info("Volume acumulado: %s", final.name)
+        log.info("Volume updated: %s", final.name)
 
     def finish(self, manga: dict[str, Any]) -> None:
         if self.one_file:
@@ -337,7 +337,7 @@ class _ZipOutput(OutputFormat):
             for img in image_files(images_dir):
                 arc.write(img, arcname=img.name)
             _archive_writestr(arc, "ComicInfo.xml", _chapter_comicinfo(manga, chapter))
-        log.info("%s criado: %s", self.ext.upper(), out.name)
+        log.info("%s created: %s", self.ext.upper(), out.name)
 
     # -- volume mode --------------------------------------------------- #
 
@@ -369,7 +369,7 @@ class _ZipOutput(OutputFormat):
             if out.is_file():
                 with _open_archive(out, append=True) as arc:
                     _archive_writestr(arc, "ComicInfo.xml", _manga_comicinfo(manga))
-                log.info("%s finalizado: %s", self.ext.upper(), out.name)
+                log.info("%s finalized: %s", self.ext.upper(), out.name)
         super().finish(manga)
 
 
@@ -475,7 +475,7 @@ class EpubFormat(OutputFormat):
             images=image_files(images_dir),
             comicinfo=_chapter_comicinfo(manga, chapter),
         )
-        log.info("EPUB criado: %s", out.name)
+        log.info("EPUB created: %s", out.name)
 
     # -- volume mode --------------------------------------------------- #
 
@@ -493,7 +493,7 @@ class EpubFormat(OutputFormat):
             images=staging.images(),
             comicinfo=_volume_comicinfo(manga, chapter),
         )
-        log.info("EPUB do volume atualizado: %s", out.name)
+        log.info("Volume EPUB updated: %s", out.name)
 
     # -- single mode --------------------------------------------------- #
 
@@ -615,9 +615,9 @@ class PdfFormat(OutputFormat):
             return
         images = image_files(images_dir)
         if not images:
-            raise MangaDlError("nenhuma imagem para converter em PDF")
+            raise MangaDlError("no images to convert to PDF")
         self._images_to_pdf(images, out)
-        log.info("PDF criado: %s", out.name)
+        log.info("PDF created: %s", out.name)
 
     def _save_volume(self, manga, chapter, images_dir: Path) -> None:
         vol_name = _volume_folder_name(chapter)
@@ -625,7 +625,7 @@ class PdfFormat(OutputFormat):
         staging.add(image_files(images_dir))
         out = self._manga_dir(manga) / f"{safe_name(vol_name)}.pdf"
         self._images_to_pdf(staging.images(), out)
-        log.info("PDF do volume atualizado: %s", out.name)
+        log.info("Volume PDF updated: %s", out.name)
 
     def _save_chapter_single(self, manga, chapter, images_dir: Path) -> None:
         if self._single_staging is None:

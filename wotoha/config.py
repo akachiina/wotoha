@@ -32,7 +32,7 @@ class Config:
         self.username: str | None = os.environ.get("MANGA_DL_USERNAME") or None
         self.password: str | None = os.environ.get("MANGA_DL_PASSWORD") or None
         self.default_format: str = os.environ.get("MANGA_DL_FORMAT", "raw").lower()
-        self.download_dir: Path = Path(os.environ.get("MANGA_DL_DIR", "downloads")).expanduser()
+        self.download_dir: Path = Path(os.environ.get("MANGA_DL_DIR") or ".").expanduser()
         self.server_jar: Path = Path(
             os.environ.get("MANGA_DL_SERVER_JAR", "~/.wotoha/Suwayomi-Server.jar")
         ).expanduser()

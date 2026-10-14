@@ -9,7 +9,14 @@ dist/
 # Downloads e cache local
 downloads/
 downloads-test/
+converted/
+out/
 .cache/
+.wotoha-staging/
+*.cbz
+*.cb7
+*.epub
+*.pdf
 
 # Suwayomi local
 .manga-dl/
