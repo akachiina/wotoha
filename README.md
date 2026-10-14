@@ -11,19 +11,11 @@
   <a href="#"><img src="https://img.shields.io/badge/engine-wasmtime-orange.svg" alt="wasmtime"></a>
 </p>
 
-```
-┌──────────┐  runs     ┌────────────────────┐  scrapes  ┌──────────────┐
-│  wotoha  │ ────────► │  .aix extension    │ ────────► │  manga       │
-│ (Python) │  wasmtime │  (WASM sandboxed)  │           │  sites       │
-└──────────┘           └────────────────────┘           └──────────────┘
-```
-
 ---
 
 ## Features
 
 - **140+ sources** — official Aidoku index plus third-party repos (`sources repo add`)
-- **~80 MB RAM** — no JVM, no Android, no Chromium, just Python + wasmtime
 - **5 output formats** — `raw`, `epub`, `cbz`, `cb7`, `pdf`, all with ComicInfo.xml metadata
 - **3 packaging modes** — per `chapter`, per `volume`, or `single` file for the whole manga
 - **Language filter** — per-run `--language` for multi-language sources (MangaDex, MangaPlus, MangaFire...)
@@ -56,6 +48,15 @@ pip install -e .
 
 Optional extras: `pip install wotoha[cb7]` (needs `py7zr` for `--format cb7`);
 SOCKS proxy (`--proxy socks5://...`) needs `pip install requests[socks]`.
+
+## Updating
+
+```bash
+wotoha update
+```
+
+Detects how wotoha was installed (pipx, pip, or editable checkout) and
+updates accordingly. `--source <URL>` overrides the package source.
 
 ## Quick Start
 
@@ -217,7 +218,7 @@ WASM source calls host imports (`net.send`, `html.select`,
 decodes. Fully sandboxed — no disk/network access except through host
 functions.
 
-## Suwayomi (optional, legacy engine)
+## Suwayomi (experimental engine)
 
 Mihon/keiyoushi extensions, needs a JVM:
 

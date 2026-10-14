@@ -961,6 +961,119 @@ def cmd_download(args) -> None:
         _download_aidoku(args)
 
 
+UPDATE_SOURCE_URL = "git+https://github.com/akachiina/wotoha.git"
+
+
+def _project_root() -> Path | None:
+    """Locates the source checkout root (dir with .git + pyproject.toml)."""
+    here = Path(__file__).resolve()
+    for parent in (here.parent, *here.parents):
+        if (parent / ".git").is_dir() and (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def _detect_install_mode() -> tuple[str, dict]:
+    """Detects how wotoha was installed: pipx, pip, or editable checkout."""
+    import importlib.metadata as _md
+
+    prefix = Path(sys.prefix)
+    if "pipx" in prefix.parts and "venvs" in prefix.parts:
+        return ("pipx", {"name": prefix.name})
+
+    url: str | None = None
+    editable = False
+    found = True
+    try:
+        dist = _md.distribution("wotoha")
+    except _md.PackageNotFoundError:
+        dist = None
+        found = False
+    if dist is not None:
+        try:
+            direct = json.loads(dist.read_text("direct_url.json") or "")
+        except Exception:  # noqa: BLE001 - no PEP 610 metadata (legacy installs)
+            direct = None
+        if direct:
+            url = direct.get("url")
+            editable = bool(direct.get("editable")) or str(url or "").startswith("file:")
+        if str(getattr(dist, "_path", "") or "").endswith(".egg-info"):
+            editable = True  # legacy setuptools editable install
+    root = _project_root()
+    if editable or (not found and root is not None):
+        if root is None:
+            raise MangaDlError("could not locate the wotoha source checkout")
+        return ("editable", {"root": root, "url": url})
+    if dist is None:
+        raise MangaDlError(
+            "wotoha installation not found; install with: "
+            "pipx install git+https://github.com/akachiina/wotoha.git"
+        )
+    spec = UPDATE_SOURCE_URL
+    if url and url.startswith("https://") and "github.com" in url:
+        spec = url if url.startswith("git+") else f"git+{url}"
+    return ("pip", {"spec": spec})
+
+
+def _run_update(cmd: list[str]) -> None:
+    """Runs an update subprocess; failures become MangaDlError (no traceback)."""
+    import subprocess
+
+    console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
+    try:
+        subprocess.run(cmd, check=True)
+    except FileNotFoundError:
+        raise MangaDlError(f"command not found: {cmd[0]}") from None
+    except subprocess.CalledProcessError as e:
+        raise MangaDlError(f"update failed (exit {e.returncode}): {' '.join(cmd)}") from None
+
+
+def cmd_update(args) -> None:
+    """Updates wotoha itself, honoring the original install mode."""
+    import subprocess
+
+    mode, info = _detect_install_mode()
+    if mode == "pipx":
+        pipx = shutil.which("pipx")
+        if not pipx:
+            raise MangaDlError(
+                "pipx not found; update manually with: pipx reinstall "
+                f"{info['name']}"
+            )
+        console.print(f"Updating pipx package [bold cyan]{info['name']}[/bold cyan]...")
+        if getattr(args, "source", None):
+            _run_update([pipx, "install", "--force", args.source])
+        else:
+            try:
+                _run_update([pipx, "reinstall", info["name"]])
+            except MangaDlError:
+                console.print("[yellow]reinstall failed, trying fresh install...[/yellow]")
+                _run_update([pipx, "install", "--force", UPDATE_SOURCE_URL])
+    elif mode == "pip":
+        spec = getattr(args, "source", None) or info["spec"]
+        console.print("Updating pip package [bold cyan]wotoha[/bold cyan]...")
+        _run_update([sys.executable, "-m", "pip", "install", "--force-reinstall", spec])
+    else:
+        if getattr(args, "source", None):
+            console.print("[dim]Note: --source is ignored for editable checkouts (uses git remote).[/dim]")
+        root = info["root"]
+        console.print(f"Updating editable checkout at [bold cyan]{root}[/bold cyan]...")
+        try:
+            _run_update(["git", "-C", str(root), "pull", "--ff-only"])
+        except MangaDlError as e:
+            raise MangaDlError(
+                f"{e}\nHint: the checkout has local changes — commit or stash them, then retry."
+            ) from None
+    console.print("[green]Updated.[/green]", end=" ")
+    console.print("Run [bold]wotoha --version[/bold] to confirm.")
+    wotoha_bin = shutil.which("wotoha")
+    if wotoha_bin:
+        try:
+            subprocess.run([wotoha_bin, "--version"], check=True)
+        except Exception:  # noqa: BLE001 - confirmation is best-effort
+            pass
+
+
 def _chapter_number_from_name(name: str) -> float | None:
     import re as _re
 
@@ -1332,6 +1445,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="output directory (default: current directory or MANGA_DL_DIR)",
     )
     p_cv.set_defaults(func=cmd_convert)
+
+    # update (self-update, engine-independent)
+    p_up = sub.add_parser(
+        "update", help="Update wotoha itself",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Examples:\n"
+               "  wotoha update\n"
+               "  wotoha update --source git+https://github.com/akachiina/wotoha.git\n",
+    )
+    p_up.add_argument(
+        "--source", default=None, metavar="URL",
+        help="package spec/URL to update from "
+             "(default: recorded install source or the GitHub repo)",
+    )
+    p_up.set_defaults(func=cmd_update)
 
     return parser
 
