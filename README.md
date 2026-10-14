@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.jpg" alt="wotoha" width="120">
+</p>
+
 <h1 align="center">wotoha</h1>
 
 <p align="center">
