@@ -9,7 +9,7 @@ description = "Manga downloader CLI with Aidoku (WASM) extensions — lightweigh
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "wotoha contributors" }]
+authors = [{ name = "Chiina" }]
 dependencies = [
     "requests>=2.31",
     "rich>=13.0",
